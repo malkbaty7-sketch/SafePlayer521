@@ -31,6 +31,8 @@ jobs:
   build:
     name: Build APKs
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout Code
@@ -44,11 +46,15 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Accept Android SDK Licenses
+        run: |
+          yes | sdkmanager --licenses || true
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+          cache-read-only: false
 
       - name: Prepare Secrets & Keystores
         run: |
@@ -62,46 +68,81 @@ jobs:
             fi
           fi
 
-          # Restore debug.keystore from base64 if not already present
-          if [ ! -f "debug.keystore" ] && [ -f "debug.keystore.base64" ]; then
-            echo "Restoring debug.keystore from base64..."
-            base64 -d debug.keystore.base64 > debug.keystore
+          # Restore debug.keystore from base64 if present, or generate one
+          if [ ! -f "debug.keystore" ]; then
+            if [ -f "debug.keystore.base64" ]; then
+              echo "Restoring debug.keystore from base64..."
+              base64 -d debug.keystore.base64 > debug.keystore
+            else
+              echo "Generating debug.keystore..."
+              keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            fi
           fi
 
-      - name: Build Debug & Release APKs
+          # Restore or generate my-upload-key.jks for release signing
+          if [ ! -f "my-upload-key.jks" ]; then
+            if [ -f "my-upload-key.jks.base64" ]; then
+              echo "Restoring my-upload-key.jks from base64..."
+              base64 -d my-upload-key.jks.base64 > my-upload-key.jks
+            else
+              echo "Generating my-upload-key.jks..."
+              keytool -genkey -v -keystore my-upload-key.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=SafePlayer, OU=AI, O=SafePlayer, L=City, S=State, C=US"
+            fi
+          fi
+
+      - name: Build Debug APK
         run: |
-          gradle :app:assembleDebug :app:assembleRelease --stacktrace
+          echo "Building Debug APK..."
+          gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Build Release APK
+        run: |
+          echo "Building Release APK..."
+          gradle :app:assembleRelease --no-daemon --stacktrace
 
       - name: Collect and Rename APKs
         run: |
           mkdir -p output-apks
           VERSION_NAME="1.0.0"
 
-          # Debug APK
-          DEBUG_APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          if [ -f "$DEBUG_APK" ]; then
+          echo "Searching for all built APK files..."
+          find app/build/outputs/ -type f -name "*.apk" || true
+
+          # Collect Debug APK
+          DEBUG_APK=$(find app/build/outputs/apk/debug -name "*.apk" 2>/dev/null | head -n 1)
+          if [ -n "$DEBUG_APK" ] && [ -f "$DEBUG_APK" ]; then
             cp "$DEBUG_APK" "output-apks/SafePlayer-v${VERSION_NAME}-debug.apk"
-            echo "Copied debug APK"
+            echo "Copied Debug APK from $DEBUG_APK"
           fi
 
-          # Release APK
-          RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          if [ -f "$RELEASE_APK" ]; then
+          # Collect Release APK
+          RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" 2>/dev/null | head -n 1)
+          if [ -n "$RELEASE_APK" ] && [ -f "$RELEASE_APK" ]; then
             cp "$RELEASE_APK" "output-apks/SafePlayer-v${VERSION_NAME}-release.apk"
-            echo "Copied release APK"
+            echo "Copied Release APK from $RELEASE_APK"
           fi
 
-          ls -la output-apks/
+          # Fallback: copy any APK found in outputs if not already copied
+          for apk in $(find app/build/outputs -name "*.apk" 2>/dev/null); do
+            bname=$(basename "$apk")
+            if [ ! -f "output-apks/$bname" ] && [ ! -f "output-apks/SafePlayer-v${VERSION_NAME}-release.apk" ]; then
+              cp "$apk" "output-apks/$bname"
+            fi
+          done
+
+          echo "Final APK files generated:"
+          ls -lh output-apks/
 
       - name: Upload APKs as Workflow Artifact
         uses: actions/upload-artifact@v4
         with:
           name: SafePlayer-APKs
           path: output-apks/*.apk
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.create_release == 'true'
+        if: (startsWith(github.ref, 'refs/tags/v') || github.event.inputs.create_release == 'true')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
@@ -110,8 +151,8 @@ jobs:
             ## 📱 مشغل SafePlayer - ملفات التثبيت (APK)
             
             تم بناء ملفات التطبيق بنجاح:
-            - **SafePlayer-Release.apk**: النسخة الجاهزة للتشغيل والاستخدام اليومي.
-            - **SafePlayer-Debug.apk**: النسخة التجريبية للمطورين.
+            - **SafePlayer-v1.0.0-release.apk**: النسخة الجاهزة للتشغيل والاستخدام اليومي.
+            - **SafePlayer-v1.0.0-debug.apk**: النسخة التجريبية للمطورين.
             
             ### ✨ أهم المميزات المضمنة:
             - 🔐 **الخزنة السرية (Safe Vault Pro)**: حماية بالبصمة ورمز PIN، ووضع التمويه الذكي (Decoy PIN).
