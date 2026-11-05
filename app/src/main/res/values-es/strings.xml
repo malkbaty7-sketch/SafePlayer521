@@ -1,0 +1,157 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SafePlayer</string>
+    
+    
+    <string name="nav_home">Inicio</string>
+    <string name="nav_library">Biblioteca</string>
+    <string name="nav_settings">Ajustes</string>
+    <string name="nav_tasks">Tareas</string>
+    <string name="nav_storage">Almacenamiento</string>
+
+    
+    <string name="label_original">Original</string>
+    <string name="label_modified">Modificado</string>
+    <string name="label_folder">Carpeta:</string>
+    <string name="label_size">Tamaño:</string>
+    <string name="label_path">Ruta:</string>
+    <string name="label_duration">Duración:</string>
+    <string name="label_date_modified">Modificado:</string>
+
+    
+    <string name="title_library">Biblioteca multimedia</string>
+    <string name="hint_search">Buscar multimedia…</string>
+    <string name="action_sort_by">Ordenar por</string>
+    <string name="desc_audio">Audio</string>
+    <string name="desc_video">Vídeo</string>
+
+    
+    <string name="action_play_video">Reproducir vídeo</string>
+    <string name="action_open_editing_studio">Abrir estudio de edición</string>
+    <string name="action_rename">Renombrar</string>
+    <string name="action_move">Mover</string>
+    <string name="action_copy">Copiar</string>
+    <string name="action_delete">Eliminar</string>
+    <string name="desc_back">Atrás</string>
+    
+    
+    <string name="title_timeline_markers">Marcadores de línea temporal</string>
+    <string name="action_add_marker">Añadir marcador</string>
+    <string name="action_add">Añadir</string>
+    <string name="action_export_trim">Exportar corte</string>
+
+    
+    <string name="title_task_center">Centro de tareas</string>
+    <string name="action_clear_completed">Limpiar completadas</string>
+    <string name="format_status">Estado: %1$s</string>
+    <string name="format_progress">Progreso: %1$d%%</string>
+    <string name="format_error">Error: %1$s</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_pause">Pausar</string>
+    <string name="action_resume">Reanudar</string>
+    <string name="action_retry">Reintentar</string>
+    
+    <string name="task_status_queued">En cola</string>
+    <string name="task_status_active">Activo</string>
+    <string name="task_status_paused">Pausado</string>
+    <string name="task_status_completed">Completado</string>
+    <string name="task_status_failed">Fallido</string>
+    <string name="task_status_interrupted">Interrumpido</string>
+
+    
+    <string name="title_storage">Panel de almacenamiento</string>
+    <string name="action_clean_cache">Limpiar caché</string>
+    <string name="format_used_storage">Usado: %1$s</string>
+    <string name="format_free_storage">Libre: %1$s</string>
+    <string name="warning_storage_low">¡Espacio bajo!</string>
+
+    
+    <string name="format_size_mb">%1$s MB</string>
+    <string name="empty_media">No se encontró contenido</string>
+
+    
+    <string name="header_continue_watching">Continuar viendo</string>
+    <string name="header_recently_played">Reproducido recientemente</string>
+    <string name="header_favorites">Favoritos</string>
+    <string name="header_recently_added">Añadido recientemente</string>
+    <string name="header_libraries">Bibliotecas</string>
+    <string name="title_video_library">Biblioteca de vídeo</string>
+    <string name="title_audio_library">Biblioteca de audio</string>
+    <string name="title_folders">Carpetas</string>
+    <string name="label_protected">Protegido</string>
+
+    
+    <string name="title_videos">Vídeos</string>
+    <string name="title_audios">Audios</string>
+    <string name="filter_all">Todos</string>
+    <string name="filter_watched">Vistos</string>
+    <string name="filter_unwatched">No vistos</string>
+    <string name="filter_in_progress">En progreso</string>
+    <string name="filter_favorites">Favoritos</string>
+    
+    <string name="sort_date">Por fecha</string>
+    <string name="sort_name">Por nombre</string>
+    <string name="sort_size">Por tamaño</string>
+    <string name="sort_duration">Por duración</string>
+    <string name="sort_newest">Más recientes primero</string>
+    
+    <string name="empty_items">No se encontraron elementos.</string>
+    <string name="format_folder">Carpeta: %1$s</string>
+
+    
+    <string name="title_media_details">Detalles multimedia</string>
+    <string name="title_rename_media">Renombrar archivo</string>
+    <string name="label_new_name">Nuevo nombre</string>
+    <string name="action_rename_confirm">Renombrar</string>
+    <string name="action_cancel_dialog">Cancelar</string>
+    <string name="title_delete_media">Eliminar archivo</string>
+    <string name="desc_delete_media">¿Estás seguro de que deseas eliminar permanentemente \'%1$s\'? Esta acción no se puede deshacer.</string>
+    <string name="action_delete_confirm">Eliminar</string>
+    <string name="action_play_full_media">Reproducir completo</string>
+
+    
+    <string name="title_scene_analysis">Análisis de escenas</string>
+    <string name="status_analysis_stale">Análisis desactualizado</string>
+    <string name="desc_analysis_stale">El archivo se modificó desde el último análisis.</string>
+    <string name="status_analysis_progress">Análisis en curso: %1$s</string>
+    <string name="format_processed">Procesado: %1$s / %2$s</string>
+    <string name="format_scenes_found">Escenas detectadas: %1$d</string>
+    <string name="action_cancel_scan">Cancelar análisis</string>
+    <string name="status_scan_failed">Error en el análisis: %1$s</string>
+    <string name="status_scan_cancelled">Análisis cancelado.</string>
+    <string name="title_ai_engine">Motor de IA sin conexión</string>
+    <string name="desc_ai_offline">Detección de contenido local</string>
+    <string name="status_ai_stale">Resultados de IA desactualizados</string>
+    <string name="desc_ai_stale">Archivo modificado tras el último análisis de IA.</string>
+    <string name="status_ai_progress">Motor de IA: %1$s</string>
+    <string name="format_ai_strategy">Estrategia: %1$s</string>
+    <string name="format_ai_detections">Detecciones encontradas: %1$d</string>
+    <string name="action_cancel_ai">Cancelar análisis IA</string>
+    <string name="req_scene_analysis">Requiere completar primero el análisis de escenas.</string>
+    <string name="status_ai_failed">Error de IA: %1$s</string>
+    <string name="action_review_detections">Revisar %1$d detecciones</string>
+    <string name="format_scenes_count">Escenas (%1$d)</string>
+    <string name="format_scene_index">Escena %1$d</string>
+    <string name="format_time_range">%1$s → %2$s</string>
+
+    
+    <string name="title_language">Idioma</string>
+    <string name="desc_language">Seleccionar idioma de la aplicación</string>
+    <string name="lang_system">Predeterminado del sistema</string>
+    <string name="lang_ar">العربية (Árabe)</string>
+    <string name="lang_en">English (Inglés)</string>
+    <string name="lang_es">Español</string>
+    <string name="lang_fr">Français (Francés)</string>
+    <string name="lang_de">Deutsch (Alemán)</string>
+    <string name="lang_zh">中文 (Chino simplificado)</string>
+    <string name="language_changed_toast">Idioma cambiado correctamente</string>
+
+    
+    <string name="title_playlists">Listas de reproducción</string>
+    <string name="action_new_playlist">Nueva lista</string>
+    <string name="action_add_to_playlist">Añadir a lista</string>
+    <string name="title_media_sources">Carpetas y fuentes multimedia</string>
+    <string name="action_add_folder">Añadir carpeta</string>
+    <string name="title_settings_system">Ajustes y sistema</string>
+    <string name="title_relink_media">Revincular archivo</string>
+<string name="section_media_modules">Media Management &amp; Modules</string><string name="item_sources_title">Media Sources &amp; Folders</string><string name="item_sources_desc">Manage custom folders and scan directories</string><string name="item_playlists_title">Custom Playlists</string><string name="item_playlists_desc">Create, organize and manage playlists</string><string name="item_models_title">AI Detection Models</string><string name="item_models_desc">Manage on-device ML Kit models and sensors</string><string name="item_tasks_title">Task Management Center</string><string name="item_tasks_desc">Monitor background jobs, queues and exports</string><string name="item_security_title">Security &amp; Parental Controls</string><string name="item_security_desc">App lock, PIN, screenshot protection and audit logs</string><string name="item_storage_title">Storage &amp; Integrity Dashboard</string><string name="item_storage_desc">Disk space, cache cleaner, and database reconciler</string><string name="section_info_support">Information &amp; Support</string><string name="item_privacy_title">Privacy Policy (Local-First)</string><string name="item_privacy_desc">Learn about our zero telemetry and privacy guarantees</string><string name="item_release_title">Release Notes (v1.0.0)</string><string name="item_release_desc">View full feature list and release improvements</string><string name="item_feedback_title">Feedback &amp; Bug Reports</string><string name="item_feedback_desc">Contact the engineering team or report an issue</string><string name="action_understood">Understood</string><string name="action_close">Close</string><string name="action_email_support">Email Support</string><string name="title_diagnostics">SafePlayer Diagnostics</string><string name="action_export_diagnostics">Export Safe Diagnostics (JSON)</string><string name="prompt_permissions_required">Permissions are required to manage your library.</string><string name="action_grant_access">Grant Access</string><string name="title_library_scan_progress">Library Scan in Progress</string><string name="format_scan_progress">Scanned: %1$d / %2$d</string><string name="action_scan_device">Scan Device</string><string name="title_theme_color">Theme Color</string><string name="title_app_color_theme">App Color Theme</string><string name="theme_bronze">Bronze (Default)</string><string name="theme_ocean">Ocean (Blue)</string><string name="theme_forest">Forest (Green)</string><string name="theme_slate">Slate (Purple/Gray)</string><string name="action_select_theme">Select Theme Color</string><string name="desc_toggle_day_night">Toggle Day/Night Mode</string></resources>

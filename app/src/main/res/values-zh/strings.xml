@@ -1,0 +1,157 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SafePlayer</string>
+    
+    
+    <string name="nav_home">首页</string>
+    <string name="nav_library">媒体库</string>
+    <string name="nav_settings">设置</string>
+    <string name="nav_tasks">任务</string>
+    <string name="nav_storage">存储</string>
+
+    
+    <string name="label_original">原始</string>
+    <string name="label_modified">已修改</string>
+    <string name="label_folder">文件夹：</string>
+    <string name="label_size">大小：</string>
+    <string name="label_path">路径：</string>
+    <string name="label_duration">时长：</string>
+    <string name="label_date_modified">修改日期：</string>
+
+    
+    <string name="title_library">媒体库</string>
+    <string name="hint_search">搜索媒体…</string>
+    <string name="action_sort_by">排序方式</string>
+    <string name="desc_audio">音频</string>
+    <string name="desc_video">视频</string>
+
+    
+    <string name="action_play_video">播放视频</string>
+    <string name="action_open_editing_studio">打开编辑工作台</string>
+    <string name="action_rename">重命名</string>
+    <string name="action_move">移动</string>
+    <string name="action_copy">复制</string>
+    <string name="action_delete">删除</string>
+    <string name="desc_back">返回</string>
+    
+    
+    <string name="title_timeline_markers">时间轴标记</string>
+    <string name="action_add_marker">添加标记</string>
+    <string name="action_add">添加</string>
+    <string name="action_export_trim">导出片段</string>
+
+    
+    <string name="title_task_center">任务中心</string>
+    <string name="action_clear_completed">清理已完成</string>
+    <string name="format_status">状态：%1$s</string>
+    <string name="format_progress">进度：%1$d%%</string>
+    <string name="format_error">错误：%1$s</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_pause">暂停</string>
+    <string name="action_resume">继续</string>
+    <string name="action_retry">重试</string>
+    
+    <string name="task_status_queued">排队中</string>
+    <string name="task_status_active">进行中</string>
+    <string name="task_status_paused">已暂停</string>
+    <string name="task_status_completed">已完成</string>
+    <string name="task_status_failed">已失败</string>
+    <string name="task_status_interrupted">已中断</string>
+
+    
+    <string name="title_storage">存储管理</string>
+    <string name="action_clean_cache">清理缓存</string>
+    <string name="format_used_storage">已用：%1$s</string>
+    <string name="format_free_storage">剩余：%1$s</string>
+    <string name="warning_storage_low">存储空间不足！</string>
+
+    
+    <string name="format_size_mb">%1$s MB</string>
+    <string name="empty_media">未找到媒体文件</string>
+
+    
+    <string name="header_continue_watching">继续观看</string>
+    <string name="header_recently_played">最近播放</string>
+    <string name="header_favorites">收藏夹</string>
+    <string name="header_recently_added">最近添加</string>
+    <string name="header_libraries">分类媒体库</string>
+    <string name="title_video_library">视频库</string>
+    <string name="title_audio_library">音频库</string>
+    <string name="title_folders">文件夹</string>
+    <string name="label_protected">已受保护</string>
+
+    
+    <string name="title_videos">视频</string>
+    <string name="title_audios">音频</string>
+    <string name="filter_all">全部</string>
+    <string name="filter_watched">已观看</string>
+    <string name="filter_unwatched">未观看</string>
+    <string name="filter_in_progress">播放中</string>
+    <string name="filter_favorites">收藏</string>
+    
+    <string name="sort_date">按日期</string>
+    <string name="sort_name">按名称</string>
+    <string name="sort_size">按大小</string>
+    <string name="sort_duration">按时长</string>
+    <string name="sort_newest">最新优先</string>
+    
+    <string name="empty_items">未找到任何项目。</string>
+    <string name="format_folder">文件夹：%1$s</string>
+
+    
+    <string name="title_media_details">媒体详情</string>
+    <string name="title_rename_media">重命名媒体</string>
+    <string name="label_new_name">新名称</string>
+    <string name="action_rename_confirm">重命名</string>
+    <string name="action_cancel_dialog">取消</string>
+    <string name="title_delete_media">删除媒体</string>
+    <string name="desc_delete_media">确定要永久删除“%1$s”吗？此操作无法撤消。</string>
+    <string name="action_delete_confirm">删除</string>
+    <string name="action_play_full_media">完整播放</string>
+
+    
+    <string name="title_scene_analysis">场景分析</string>
+    <string name="status_analysis_stale">分析已过时</string>
+    <string name="desc_analysis_stale">文件自上次分析以来已更改。</string>
+    <string name="status_analysis_progress">分析进行中：%1$s</string>
+    <string name="format_processed">已处理：%1$s / %2$s</string>
+    <string name="format_scenes_found">发现场景：%1$d</string>
+    <string name="action_cancel_scan">取消分析</string>
+    <string name="status_scan_failed">分析失败：%1$s</string>
+    <string name="status_scan_cancelled">分析已取消。</string>
+    <string name="title_ai_engine">离线AI智能引擎</string>
+    <string name="desc_ai_offline">本地内容智能检测</string>
+    <string name="status_ai_stale">AI检测结果已过时</string>
+    <string name="desc_ai_stale">文件在AI分析后被修改。</string>
+    <string name="status_ai_progress">AI引擎：%1$s</string>
+    <string name="format_ai_strategy">策略：%1$s</string>
+    <string name="format_ai_detections">检测到敏感场景：%1$d</string>
+    <string name="action_cancel_ai">取消AI扫描</string>
+    <string name="req_scene_analysis">需先完成场景分割分析。</string>
+    <string name="status_ai_failed">AI分析失败：%1$s</string>
+    <string name="action_review_detections">查看 %1$d 处检测结果</string>
+    <string name="format_scenes_count">场景数 (%1$d)</string>
+    <string name="format_scene_index">场景 %1$d</string>
+    <string name="format_time_range">%1$s → %2$s</string>
+
+    
+    <string name="title_language">语言</string>
+    <string name="desc_language">选择应用显示语言</string>
+    <string name="lang_system">跟随系统默认</string>
+    <string name="lang_ar">العربية (阿拉伯语)</string>
+    <string name="lang_en">English (英语)</string>
+    <string name="lang_es">Español (西班牙语)</string>
+    <string name="lang_fr">Français (法语)</string>
+    <string name="lang_de">Deutsch (德语)</string>
+    <string name="lang_zh">中文 (简体中文)</string>
+    <string name="language_changed_toast">语言切换成功</string>
+
+    
+    <string name="title_playlists">播放列表</string>
+    <string name="action_new_playlist">新建播放列表</string>
+    <string name="action_add_to_playlist">添加到播放列表</string>
+    <string name="title_media_sources">媒体文件夹与来源</string>
+    <string name="action_add_folder">添加文件夹</string>
+    <string name="title_settings_system">系统与设置</string>
+    <string name="title_relink_media">重新关联文件</string>
+<string name="section_media_modules">Media Management &amp; Modules</string><string name="item_sources_title">Media Sources &amp; Folders</string><string name="item_sources_desc">Manage custom folders and scan directories</string><string name="item_playlists_title">Custom Playlists</string><string name="item_playlists_desc">Create, organize and manage playlists</string><string name="item_models_title">AI Detection Models</string><string name="item_models_desc">Manage on-device ML Kit models and sensors</string><string name="item_tasks_title">Task Management Center</string><string name="item_tasks_desc">Monitor background jobs, queues and exports</string><string name="item_security_title">Security &amp; Parental Controls</string><string name="item_security_desc">App lock, PIN, screenshot protection and audit logs</string><string name="item_storage_title">Storage &amp; Integrity Dashboard</string><string name="item_storage_desc">Disk space, cache cleaner, and database reconciler</string><string name="section_info_support">Information &amp; Support</string><string name="item_privacy_title">Privacy Policy (Local-First)</string><string name="item_privacy_desc">Learn about our zero telemetry and privacy guarantees</string><string name="item_release_title">Release Notes (v1.0.0)</string><string name="item_release_desc">View full feature list and release improvements</string><string name="item_feedback_title">Feedback &amp; Bug Reports</string><string name="item_feedback_desc">Contact the engineering team or report an issue</string><string name="action_understood">Understood</string><string name="action_close">Close</string><string name="action_email_support">Email Support</string><string name="title_diagnostics">SafePlayer Diagnostics</string><string name="action_export_diagnostics">Export Safe Diagnostics (JSON)</string><string name="prompt_permissions_required">Permissions are required to manage your library.</string><string name="action_grant_access">Grant Access</string><string name="title_library_scan_progress">Library Scan in Progress</string><string name="format_scan_progress">Scanned: %1$d / %2$d</string><string name="action_scan_device">Scan Device</string><string name="title_theme_color">Theme Color</string><string name="title_app_color_theme">App Color Theme</string><string name="theme_bronze">Bronze (Default)</string><string name="theme_ocean">Ocean (Blue)</string><string name="theme_forest">Forest (Green)</string><string name="theme_slate">Slate (Purple/Gray)</string><string name="action_select_theme">Select Theme Color</string><string name="desc_toggle_day_night">Toggle Day/Night Mode</string></resources>

@@ -1,0 +1,191 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SafePlayer</string>
+    
+    
+    <string name="nav_home">الرئيسية</string>
+    <string name="nav_library">المكتبة</string>
+    <string name="nav_settings">الإعدادات</string>
+    <string name="nav_tasks">المهام</string>
+    <string name="nav_storage">التخزين</string>
+
+    
+    <string name="label_original">أصلي</string>
+    <string name="label_modified">معدل</string>
+    <string name="label_folder">المجلد:</string>
+    <string name="label_size">الحجم:</string>
+    <string name="label_path">المسار:</string>
+    <string name="label_duration">المدة:</string>
+    <string name="label_date_modified">تاريخ التعديل:</string>
+
+    
+    <string name="title_library">مكتبة الوسائط</string>
+    <string name="hint_search">البحث في الوسائط…</string>
+    <string name="action_sort_by">ترتيب حسب</string>
+    <string name="desc_audio">صوت</string>
+    <string name="desc_video">فيديو</string>
+
+    
+    <string name="action_play_video">تشغيل الفيديو</string>
+    <string name="action_open_editing_studio">استوديو التحرير</string>
+    <string name="action_rename">تغيير الاسم</string>
+    <string name="action_move">نقل</string>
+    <string name="action_copy">نسخ</string>
+    <string name="action_delete">حذف</string>
+    <string name="desc_back">رجوع</string>
+    
+    
+    <string name="title_timeline_markers">علامات الخط الزمني</string>
+    <string name="action_add_marker">إضافة علامة</string>
+    <string name="action_add">إضافة</string>
+    <string name="action_export_trim">تصدير المقطع</string>
+
+    
+    <string name="title_task_center">مركز المهام</string>
+    <string name="action_clear_completed">مسح المكتملة</string>
+    <string name="format_status">الحالة: %1$s</string>
+    <string name="format_progress">التقدم: %1$d%%</string>
+    <string name="format_error">خطأ: %1$s</string>
+    <string name="action_cancel">إلغاء</string>
+    <string name="action_pause">إيقاف مؤقت</string>
+    <string name="action_resume">استئناف</string>
+    <string name="action_retry">إعادة المحاولة</string>
+    
+    <string name="task_status_queued">في الانتظار</string>
+    <string name="task_status_active">قيد التنفيذ</string>
+    <string name="task_status_paused">متوقفة</string>
+    <string name="task_status_completed">مكتملة</string>
+    <string name="task_status_failed">فشلت</string>
+    <string name="task_status_interrupted">انقطعت</string>
+
+    
+    <string name="title_storage">لوحة التخزين</string>
+    <string name="action_clean_cache">تنظيف الذاكرة</string>
+    <string name="format_used_storage">مستخدم: %1$s</string>
+    <string name="format_free_storage">متاح: %1$s</string>
+    <string name="warning_storage_low">المساحة منخفضة!</string>
+
+    
+    <string name="format_size_mb">%1$s ميغابايت</string>
+    <string name="empty_media">لا توجد وسائط</string>
+
+    
+    <string name="header_continue_watching">متابعة المشاهدة</string>
+    <string name="header_recently_played">تم تشغيله مؤخرًا</string>
+    <string name="header_favorites">المفضلة</string>
+    <string name="header_recently_added">أضيف مؤخرًا</string>
+    <string name="header_libraries">المكتبات</string>
+    <string name="title_video_library">مكتبة الفيديو</string>
+    <string name="title_audio_library">مكتبة الصوت</string>
+    <string name="title_folders">المجلدات</string>
+    <string name="label_protected">محمي</string>
+
+    
+    <string name="title_videos">مقاطع الفيديو</string>
+    <string name="title_audios">المقاطع الصوتية</string>
+    <string name="filter_all">الكل</string>
+    <string name="filter_watched">تمت مشاهدته</string>
+    <string name="filter_unwatched">لم تتم مشاهدته</string>
+    <string name="filter_in_progress">قيد المشاهدة</string>
+    <string name="filter_favorites">المفضلة</string>
+    
+    <string name="sort_date">ترتيب حسب التاريخ</string>
+    <string name="sort_name">ترتيب حسب الاسم</string>
+    <string name="sort_size">ترتيب حسب الحجم</string>
+    <string name="sort_duration">ترتيب حسب المدة</string>
+    <string name="sort_newest">ترتيب الأحدث أولاً</string>
+    
+    <string name="empty_items">لم يتم العثور على أي عناصر.</string>
+    <string name="format_folder">المجلد: %1$s</string>
+
+    
+    <string name="title_media_details">تفاصيل الوسائط</string>
+    <string name="title_rename_media">إعادة التسمية</string>
+    <string name="label_new_name">الاسم الجديد</string>
+    <string name="action_rename_confirm">إعادة التسمية</string>
+    <string name="action_cancel_dialog">إلغاء</string>
+    <string name="title_delete_media">حذف الوسائط</string>
+    <string name="desc_delete_media">هل أنت متأكد أنك تريد حذف \'%1$s\' نهائياً؟ لا يمكن التراجع عن هذا الإجراء.</string>
+    <string name="action_delete_confirm">حذف</string>
+    <string name="action_play_full_media">تشغيل الوسائط بالكامل</string>
+
+    
+    <string name="title_scene_analysis">تحليل المشاهد</string>
+    <string name="status_analysis_stale">التحليل غير محدّث</string>
+    <string name="desc_analysis_stale">تم تعديل الملف منذ آخر تحليل.</string>
+    <string name="status_analysis_progress">جاري التحليل: %1$s</string>
+    <string name="format_processed">المعالج: %1$s / %2$s</string>
+    <string name="format_scenes_found">تم العثور على: %1$d مشاهد</string>
+    <string name="action_cancel_scan">إلغاء التحليل</string>
+    <string name="status_scan_failed">فشل التحليل: %1$s</string>
+    <string name="status_scan_cancelled">تم إلغاء التحليل.</string>
+    <string name="title_ai_engine">محرك تحليل الذكاء الاصطناعي</string>
+    <string name="desc_ai_offline">اكتشاف المحتوى بلا إنترنت</string>
+    <string name="status_ai_stale">نتائج الذكاء الاصطناعي غير محدثة</string>
+    <string name="desc_ai_stale">تم تعديل الملف منذ آخر تحليل للذكاء الاصطناعي.</string>
+    <string name="status_ai_progress">محرك الذكاء الاصطناعي: %1$s</string>
+    <string name="format_ai_strategy">الاستراتيجية: %1$s</string>
+    <string name="format_ai_detections">الاكتشافات: %1$d</string>
+    <string name="action_cancel_ai">إلغاء مسح الذكاء الاصطناعي</string>
+    <string name="req_scene_analysis">يتطلب اكتمال تحليل المشاهد أولاً.</string>
+    <string name="status_ai_failed">فشل الذكاء الاصطناعي: %1$s</string>
+    <string name="action_review_detections">مراجعة %1$d اكتشافات</string>
+    <string name="format_scenes_count">المشاهد (%1$d)</string>
+    <string name="format_scene_index">المشهد %1$d</string>
+    <string name="format_time_range">%1$s → %2$s</string>
+
+    
+    <string name="title_language">اللغة</string>
+    <string name="desc_language">اختر لغة عرض التطبيق</string>
+    <string name="lang_system">لغة الجهاز الافتراضية</string>
+    <string name="lang_ar">العربية</string>
+    <string name="lang_en">الإنجليزية (English)</string>
+    <string name="lang_es">الإسبانية (Español)</string>
+    <string name="lang_fr">الفرنسية (Français)</string>
+    <string name="lang_de">الألمانية (Deutsch)</string>
+    <string name="lang_zh">الصينية المبسطة (中文)</string>
+    <string name="language_changed_toast">تم تغيير لغة التطبيق بنجاح</string>
+
+    
+    <string name="title_playlists">قوائم التشغيل</string>
+    <string name="action_new_playlist">قائمة جديدة</string>
+    <string name="action_add_to_playlist">إضافة إلى قائمة</string>
+    <string name="title_media_sources">مجلدات ومصادر الوسائط</string>
+    <string name="action_add_folder">إضافة مجلد</string>
+    <string name="title_settings_system">الإعدادات والنظام</string>
+    <string name="title_relink_media">إعادة ربط الملف</string>
+
+    
+    <string name="section_media_modules">إدارة الوسائط والوحدات</string>
+    <string name="item_sources_title">مصادر الوسائط والمجلدات</string>
+    <string name="item_sources_desc">إدارة المجلدات المخصصة ومسارات الفحص</string>
+    <string name="item_playlists_title">قوائم التشغيل المخصصة</string>
+    <string name="item_playlists_desc">إنشاء وتنظيم وإدارة قوائم التشغيل</string>
+    <string name="item_models_title">نماذج الكشف بالذكاء الاصطناعي</string>
+    <string name="item_models_desc">إدارة نماذج ML Kit والمستشعرات على الجهاز</string>
+    <string name="item_tasks_title">مركز إدارة المهام</string>
+    <string name="item_tasks_desc">مراقبة مهام الخلفية والانتظار والتصدير</string>
+    <string name="item_security_title">الأمان والرقابة الأبوية</string>
+    <string name="item_security_desc">قفل التطبيق، رمز PIN، منع لقطات الشاشة وسجلات التدقيق</string>
+    <string name="item_storage_title">لوحة معلومات التخزين وسلامة البيانات</string>
+    <string name="item_storage_desc">مساحة القرص، تنظيف الذاكرة المؤقتة، ومطابقة قاعدة البيانات</string>
+    <string name="section_info_support">المعلومات والدعم</string>
+    <string name="item_privacy_title">سياسة الخصوصية (محلي أولاً)</string>
+    <string name="item_privacy_desc">تعرف على ضمانات الخصوصية التامة وعدم جمع البيانات</string>
+    <string name="item_release_title">ملاحظات الإصدار (v1.0.0)</string>
+    <string name="item_release_desc">عرض الميزات وتحسينات الإصدار الجديد</string>
+    <string name="item_feedback_title">الملاحظات والإبلاغ عن الأخطاء</string>
+    <string name="item_feedback_desc">تواصل مع الفريق الهندسي أو أبلغ عن مشكلة</string>
+    <string name="action_understood">مفهوم</string>
+    <string name="action_close">إغلاق</string>
+    <string name="action_email_support">مراسلة الدعم</string>
+    <string name="title_diagnostics">تشخيصات SafePlayer</string>
+    <string name="action_export_diagnostics">تصدير التشخيصات الآمنة (JSON)</string>
+
+    
+    <string name="prompt_permissions_required">الأذونات مطلوبة لإدارة مكتبة الوسائط الخاصة بك.</string>
+    <string name="action_grant_access">منح الإذن</string>
+    <string name="title_library_scan_progress">جاري فحص المكتبة</string>
+    <string name="format_scan_progress">تم الفحص: %1$d / %2$d</string>
+    <string name="action_scan_device">فحص الجهاز</string>
+<string name="title_theme_color">لون المظهر (الثيم)</string><string name="title_app_color_theme">لون التطبيق</string><string name="theme_bronze">برونزي (الافتراضي)</string><string name="theme_ocean">محيطي (أزرق)</string><string name="theme_forest">غابي (أخضر)</string><string name="theme_slate">أردوازي (أرجواني/رمادي)</string><string name="action_select_theme">اختر لون المظهر</string><string name="desc_toggle_day_night">تبديل الوضع الليلي/النهاري</string><string name="tab_video">فيديو</string><string name="tab_music">موسيقى</string><string name="tab_my_files">ملفاتي</string><string name="tab_playlist">قائمة التشغيل</string><string name="folder_count">%d مجلدات</string><string name="recently_added">تمت إضافته مؤخراً</string><string name="recently_added_count">%d تمت إضافة مقاطع الفيديو</string><string name="recently_added_audio_count">%d تمت إضافة ملفات صوتية</string><string name="action_settings">Settings</string><string name="player_speed">سرعة</string><string name="player_night_mode">الوضع الليلي</string><string name="player_ab_repeat">كرر AB</string><string name="player_pip">تشغيل نافذة</string><string name="player_equalizer">هدف التعادل</string><string name="player_mirror">مرآة</string><string name="player_orientation">أفقي</string><string name="player_mute">كتم</string><string name="player_unmute">إلغاء الكتم</string><string name="player_bg_play">تشغيل في الخلفية</string><string name="player_screen_locked">الشاشة مقفلة</string><string name="player_unlock_prompt">انقر لفتح قفل الشاشة</string><string name="player_sleep_timer">مؤقت النوم</string><string name="player_sleep_timer_off">إيقاف</string><string name="player_sleep_timer_end_video">نهاية الفيديو</string><string name="player_video_info">معلومات الفيديو</string><string name="player_safe_mode">الوضع العائلي الآمن</string><string name="player_safe_mode_active">الوضع الآمن مفعل: منع الحذف وتعديل الإعدادات</string><string name="player_aspect_fit">ملاءمة</string><string name="player_aspect_fill">ملء الشاشة</string><string name="player_aspect_zoom">تكبير</string><string name="player_aspect_crop">اقتصاص</string><string name="player_brightness">السطوع</string><string name="player_volume">مستوى الصوت</string><string name="player_subtitles">الترجمة</string><string name="player_audio_tracks">المسارات الصوتية</string><string name="player_playlist">قائمة التشغيل</string><string name="player_no_subtitles">لا توجد ترجمات</string><string name="player_rewind_10">رجوع 10 ثواني</string><string name="player_forward_10">تقديم 10 ثواني</string></resources>

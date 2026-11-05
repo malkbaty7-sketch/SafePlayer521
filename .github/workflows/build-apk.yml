@@ -1,0 +1,127 @@
+name: Build and Release Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'إنشاء إصدار على GitHub Release؟'
+        required: false
+        type: boolean
+        default: false
+      release_tag:
+        description: 'اسم الإصدار (مثال: v1.0.0)'
+        required: false
+        type: string
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build APKs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare Secrets & Keystores
+        run: |
+          echo "Preparing environment and keystores..."
+          # Prepare .env for Secrets Gradle Plugin
+          if [ ! -f ".env" ]; then
+            if [ -f ".env.example" ]; then
+              cp .env.example .env
+            else
+              touch .env
+            fi
+          fi
+
+          # Restore debug.keystore from base64 if not already present
+          if [ ! -f "debug.keystore" ] && [ -f "debug.keystore.base64" ]; then
+            echo "Restoring debug.keystore from base64..."
+            base64 -d debug.keystore.base64 > debug.keystore
+          fi
+
+      - name: Build Debug & Release APKs
+        run: |
+          gradle :app:assembleDebug :app:assembleRelease --stacktrace
+
+      - name: Collect and Rename APKs
+        run: |
+          mkdir -p output-apks
+          VERSION_NAME="1.0.0"
+
+          # Debug APK
+          DEBUG_APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ -f "$DEBUG_APK" ]; then
+            cp "$DEBUG_APK" "output-apks/SafePlayer-v${VERSION_NAME}-debug.apk"
+            echo "Copied debug APK"
+          fi
+
+          # Release APK
+          RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -f "$RELEASE_APK" ]; then
+            cp "$RELEASE_APK" "output-apks/SafePlayer-v${VERSION_NAME}-release.apk"
+            echo "Copied release APK"
+          fi
+
+          ls -la output-apks/
+
+      - name: Upload APKs as Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafePlayer-APKs
+          path: output-apks/*.apk
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.create_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
+          name: Release ${{ github.event.inputs.release_tag || github.ref_name }}
+          body: |
+            ## 📱 مشغل SafePlayer - ملفات التثبيت (APK)
+            
+            تم بناء ملفات التطبيق بنجاح:
+            - **SafePlayer-Release.apk**: النسخة الجاهزة للتشغيل والاستخدام اليومي.
+            - **SafePlayer-Debug.apk**: النسخة التجريبية للمطورين.
+            
+            ### ✨ أهم المميزات المضمنة:
+            - 🔐 **الخزنة السرية (Safe Vault Pro)**: حماية بالبصمة ورمز PIN، ووضع التمويه الذكي (Decoy PIN).
+            - 🎚️ **موازن صوت 5-Band Equalizer**: تضخيم الباس (Bass Boost) ومضاعفة الصوت (Loudness Boost).
+            - 📝 **دعم الترجمة الخارجية**: تشغيل ومزامنة ملفات SRT و VTT وتخصيص الألوان والحجم.
+            - 📸 **لقطة شاشة فورية**: حفظ لقطة بدقة عالية من أي إطار فيديو مباشرة في المعرض.
+            - 🎨 **فلاتر الفيديو المباشرة**: سينما HDR، حماية العين، وأبيض وأسود.
+            - 🛡️ **الحارس العائلي الذكي**: تخطي وكتم وتعتيم المشاهد الحساسة تلقائياً.
+            - ⏰ **مؤقت النوم الذكي**: مع عد تنازلي حي وإمكانية التمديد.
+            - 📱 **مشغل مصغر ونافذة عائمة (PiP)**: تشغيل في الخلفية وتكبير باللمس (Pinch-to-zoom).
+          files: output-apks/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
