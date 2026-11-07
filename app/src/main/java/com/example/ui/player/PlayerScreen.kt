@@ -115,6 +115,8 @@ fun PlayerScreen(
     val subtitleFontSizeSp by viewModel.subtitleFontSizeSp.collectAsState()
     val subtitleColorIndex by viewModel.subtitleColorIndex.collectAsState()
     val subtitleBgOpacity by viewModel.subtitleBgOpacity.collectAsState()
+    val subtitleFontFamilyIndex by viewModel.subtitleFontFamilyIndex.collectAsState()
+    var showOnlineSubtitlesDialog by remember { mutableStateOf(false) }
 
     // Track 2: Live Video Filters State
     val videoFilterPreset by viewModel.videoFilterPreset.collectAsState()
@@ -401,10 +403,12 @@ fun PlayerScreen(
             }
             // Preset & Saturation atmospheric tint
             val presetOverlayColor = when (videoFilterPreset) {
-                "Cinema HDR" -> Color(0xFF0D253F).copy(alpha = 0.14f)
+                "Cinema HDR" -> Color(0xFF0D253F).copy(alpha = 0.12f)
+                "Vivid" -> Color(0xFFFF6F00).copy(alpha = 0.08f)
+                "Ultra Clarity 4K" -> Color(0xFF00E5FF).copy(alpha = 0.06f)
+                "AMOLED True Black" -> Color(0xFF000000).copy(alpha = 0.18f)
                 "Warm EyeCare" -> Color(0xFF3E2723).copy(alpha = 0.24f)
                 "B&W" -> Color(0xFF757575).copy(alpha = 0.35f)
-                "Vivid" -> Color(0xFFFF6F00).copy(alpha = 0.08f)
                 else -> Color.Transparent
             }
             if (presetOverlayColor != Color.Transparent) {
@@ -520,6 +524,12 @@ fun PlayerScreen(
                     text = currentSubtitleText ?: "",
                     color = subColor,
                     fontSize = subtitleFontSizeSp.sp,
+                    fontFamily = when (subtitleFontFamilyIndex) {
+                        1 -> androidx.compose.ui.text.font.FontFamily.Serif
+                        2 -> androidx.compose.ui.text.font.FontFamily.Monospace
+                        3 -> androidx.compose.ui.text.font.FontFamily.Cursive
+                        else -> androidx.compose.ui.text.font.FontFamily.Default
+                    },
                     fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center,
                     lineHeight = (subtitleFontSizeSp * 1.3f).sp
@@ -679,29 +689,35 @@ fun PlayerScreen(
                             )
                         )
                 ) {
-                    // TOP BAR
+                    // SLEEK & COMPACT TOP BAR
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .statusBarsPadding()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(
                             onClick = onNavigateBack,
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(34.dp)
                                 .background(Color.White.copy(alpha = 0.15f), CircleShape)
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
 
-                        Spacer(Modifier.width(12.dp))
+                        Spacer(Modifier.width(10.dp))
 
                         Text(
                             text = currentMedia?.name ?: "SafePlayer Video",
                             color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -712,33 +728,40 @@ fun PlayerScreen(
                         IconButton(
                             onClick = {
                                 Toast.makeText(context, "جاري البحث عن أجهزة العرض والشاشات الذكية...", Toast.LENGTH_SHORT).show()
-                            }
+                            },
+                            modifier = Modifier.size(34.dp)
                         ) {
-                            Icon(Icons.Default.Cast, contentDescription = "Cast", tint = Color.White)
+                            Icon(Icons.Default.Cast, contentDescription = "Cast", tint = Color.White, modifier = Modifier.size(19.dp))
                         }
 
                         // Subtitles CC
                         IconButton(
-                            onClick = { showSubtitlesDialog = true }
+                            onClick = { showSubtitlesDialog = true },
+                            modifier = Modifier.size(34.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ClosedCaption,
                                 contentDescription = "Subtitles",
-                                tint = if (subtitlesEnabled) MaterialTheme.colorScheme.primary else Color.White
+                                tint = if (subtitlesEnabled) MaterialTheme.colorScheme.primary else Color.White,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
 
                         // Playlist
                         IconButton(
-                            onClick = { showPlaylistSheet = true }
+                            onClick = { showPlaylistSheet = true },
+                            modifier = Modifier.size(34.dp)
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = "Playlist", tint = Color.White)
+                            Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = "Playlist", tint = Color.White, modifier = Modifier.size(20.dp))
                         }
 
                         // 3 dots More Menu
                         Box {
-                            IconButton(onClick = { showMoreMenu = true }) {
-                                Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                            IconButton(
+                                onClick = { showMoreMenu = true },
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White, modifier = Modifier.size(20.dp))
                             }
                             DropdownMenu(
                                 expanded = showMoreMenu,
@@ -1121,7 +1144,7 @@ fun PlayerScreen(
                             }
                         }
 
-                        // Timeline Seek Bar & Time Labels
+                        // Sleek Timeline Seek Bar & Time Labels
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -1129,8 +1152,8 @@ fun PlayerScreen(
                             Text(
                                 text = formatDuration(currentPosition),
                                 color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
                             )
 
                             Slider(
@@ -1142,11 +1165,11 @@ fun PlayerScreen(
                                 valueRange = 0f..(if (duration > 0) duration.toFloat() else 1f),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .padding(horizontal = 10.dp),
+                                    .padding(horizontal = 8.dp),
                                 colors = SliderDefaults.colors(
                                     thumbColor = MaterialTheme.colorScheme.primary,
                                     activeTrackColor = MaterialTheme.colorScheme.primary,
-                                    inactiveTrackColor = Color.White.copy(alpha = 0.35f)
+                                    inactiveTrackColor = Color.White.copy(alpha = 0.3f)
                                 )
                             )
 
@@ -1154,54 +1177,63 @@ fun PlayerScreen(
                             Text(
                                 text = "-${formatDuration(remainingMs)}",
                                 color = Color.White.copy(alpha = 0.85f),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
                             )
                         }
 
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(4.dp))
 
-                        // Playback Action Buttons Row
+                        // Compact Playback Action Buttons Row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             // Aspect Ratio
-                            IconButton(onClick = {
-                                viewModel.cycleAspectRatio()
-                                Toast.makeText(context, context.getString(aspectRatioMode.labelRes), Toast.LENGTH_SHORT).show()
-                            }) {
-                                Icon(Icons.Default.FitScreen, contentDescription = "Aspect Ratio", tint = Color.White)
+                            IconButton(
+                                onClick = {
+                                    viewModel.cycleAspectRatio()
+                                    Toast.makeText(context, context.getString(aspectRatioMode.labelRes), Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.FitScreen, contentDescription = "Aspect Ratio", tint = Color.White, modifier = Modifier.size(19.dp))
                             }
 
                             // Playback Speed quick button
                             Text(
                                 text = "${playbackSpeed}X",
                                 color = Color.White,
-                                fontSize = 14.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(RoundedCornerShape(6.dp))
                                     .background(Color.White.copy(alpha = 0.15f))
                                     .clickable { showSpeedDialog = true }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
                             )
 
                             // Rewind 10s
-                            IconButton(onClick = { viewModel.seekRelative(-10000L) }) {
-                                Icon(Icons.Default.Replay10, contentDescription = "Rewind 10s", tint = Color.White, modifier = Modifier.size(28.dp))
+                            IconButton(
+                                onClick = { viewModel.seekRelative(-10000L) },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.Replay10, contentDescription = "Rewind 10s", tint = Color.White, modifier = Modifier.size(22.dp))
                             }
 
                             // Previous
-                            IconButton(onClick = { viewModel.playPrevious() }) {
-                                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = Color.White, modifier = Modifier.size(32.dp))
+                            IconButton(
+                                onClick = { viewModel.playPrevious() },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = Color.White, modifier = Modifier.size(24.dp))
                             }
 
-                            // Play / Pause (Big Central Circle with Long Press for Background Play)
+                            // Play / Pause (Compact Circle with Long Press for Background Play)
                             Box(
                                 modifier = Modifier
-                                    .size(56.dp)
+                                    .size(44.dp)
                                     .clip(CircleShape)
                                     .background(if (isVideoBgPlayEnabled) Color(0xFF2196F3) else Color.White)
                                     .pointerInput(currentMedia, isVideoBgPlayEnabled) {
@@ -1212,7 +1244,7 @@ fun PlayerScreen(
                                                     val enabled = viewModel.toggleVideoBgPlay()
                                                     Toast.makeText(
                                                         context,
-                                                        if (enabled) "تم تفعيل تشغيل الفيديو في الخلفية 🎧 (سيبقى الفيديو يعمل عند الخروج من التطبيق)"
+                                                        if (enabled) "تم تفعيل تشغيل الفيديو في الخلفية 🎧"
                                                         else "تم إيقاف تشغيل الفيديو في الخلفية",
                                                         Toast.LENGTH_SHORT
                                                     ).show()
@@ -1228,18 +1260,24 @@ fun PlayerScreen(
                                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                     contentDescription = "Play/Pause",
                                     tint = if (isVideoBgPlayEnabled) Color.White else Color.Black,
-                                    modifier = Modifier.size(34.dp)
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
 
                             // Next
-                            IconButton(onClick = { viewModel.playNext() }) {
-                                Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White, modifier = Modifier.size(32.dp))
+                            IconButton(
+                                onClick = { viewModel.playNext() },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White, modifier = Modifier.size(24.dp))
                             }
 
                             // Forward 10s
-                            IconButton(onClick = { viewModel.seekRelative(10000L) }) {
-                                Icon(Icons.Default.Forward10, contentDescription = "Forward 10s", tint = Color.White, modifier = Modifier.size(28.dp))
+                            IconButton(
+                                onClick = { viewModel.seekRelative(10000L) },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.Forward10, contentDescription = "Forward 10s", tint = Color.White, modifier = Modifier.size(22.dp))
                             }
 
                             // Lock Screen Controls (🔒)
@@ -1247,9 +1285,10 @@ fun PlayerScreen(
                                 onClick = {
                                     viewModel.toggleControlsLock()
                                     Toast.makeText(context, context.getString(R.string.player_screen_locked), Toast.LENGTH_SHORT).show()
-                                }
+                                },
+                                modifier = Modifier.size(36.dp)
                             ) {
-                                Icon(Icons.Default.LockOpen, contentDescription = "Lock Controls", tint = Color.White)
+                                Icon(Icons.Default.LockOpen, contentDescription = "Lock", tint = Color.White, modifier = Modifier.size(19.dp))
                             }
                         }
                     }
@@ -1462,18 +1501,30 @@ fun PlayerScreen(
                         }
                     }
 
-                    // Load File / Demo Buttons
+                    // Load File / Online / Sample Buttons
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Button(
-                            onClick = { subtitlePickerLauncher.launch(arrayOf("*/*")) },
+                            onClick = { 
+                                subtitlePickerLauncher.launch(
+                                    arrayOf("application/x-subrip", "text/vtt", "text/plain", "*/*")
+                                ) 
+                            },
+                            modifier = Modifier.weight(1.2f)
+                        ) {
+                            Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("فتح ملف ترجمة (SRT/VTT)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        OutlinedButton(
+                            onClick = { showOnlineSubtitlesDialog = true },
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("تحميل ملف SRT/VTT")
+                            Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("بحث أونلاين", fontSize = 11.sp)
                         }
                         FilledTonalButton(
                             onClick = {
@@ -1481,7 +1532,24 @@ fun PlayerScreen(
                                 Toast.makeText(context, "تم تفعيل الترجمة التجريبية العربية 📝", Toast.LENGTH_SHORT).show()
                             }
                         ) {
-                            Text("ترجمة تجريبية")
+                            Text("تجريبية", fontSize = 11.sp)
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    // Arabic Font Selector
+                    Text("نوع الخط العربي للترجمة:", fontWeight = FontWeight.SemiBold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(0 to "افتراضي", 1 to "نسخ", 2 to "عريض", 3 to "رقعة").forEach { (idx, label) ->
+                            FilterChip(
+                                selected = subtitleFontFamilyIndex == idx,
+                                onClick = { viewModel.setSubtitleFontFamilyIndex(idx) },
+                                label = { Text(label) }
+                            )
                         }
                     }
 
@@ -1592,6 +1660,88 @@ fun PlayerScreen(
                     TextButton(onClick = { viewModel.clearSubtitles() }) {
                         Text("إزالة الترجمة", color = MaterialTheme.colorScheme.error)
                     }
+                }
+            }
+        )
+    }
+
+    // DIALOG: Smart Online Subtitles Search & 1-Tap Load
+    if (showOnlineSubtitlesDialog) {
+        var isSearching by remember { mutableStateOf(false) }
+        var searchResults by remember { mutableStateOf<List<com.example.subtitles.SubtitleDownloader.SubtitleResult>>(emptyList()) }
+
+        LaunchedEffect(Unit) {
+            isSearching = true
+            searchResults = com.example.subtitles.SubtitleDownloader.searchSubtitles(currentMedia?.name ?: "video")
+            isSearching = false
+        }
+
+        AlertDialog(
+            onDismissRequest = { showOnlineSubtitlesDialog = false },
+            title = { Text("البحث الذكي عن الترجمات 🌐", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "نتائج البحث لـ: ${currentMedia?.name ?: ""}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (isSearching) {
+                        Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    } else if (searchResults.isEmpty()) {
+                        Text("لم يتم العثور على ترجمات متطابقة.", color = MaterialTheme.colorScheme.error)
+                    } else {
+                        searchResults.forEach { sub ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.loadSubtitleText(sub.title, sub.srtContent)
+                                        Toast.makeText(context, "تم تطبيق الترجمة بنجاح! 📝", Toast.LENGTH_SHORT).show()
+                                        showOnlineSubtitlesDialog = false
+                                        showSubtitlesDialog = false
+                                    },
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Subtitles, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(sub.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                        Spacer(Modifier.height(2.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                            ) {
+                                                Text(
+                                                    text = sub.language,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(sub.source, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showOnlineSubtitlesDialog = false }) {
+                    Text("إغلاق")
                 }
             }
         )
@@ -1959,10 +2109,12 @@ fun PlayerScreen(
         val filterPresets = listOf(
             "Normal" to "طبيعي",
             "Cinema HDR" to "سينما HDR 🎬",
+            "Ultra Clarity 4K" to "وضوح فائق 4K 💎",
             "Vivid" to "ألوان زاهية ✨",
+            "AMOLED True Black" to "سواد AMOLED 🌑",
             "Warm EyeCare" to "حماية العين 👁️",
-            "B&W" to "أبيض وأسود 🎞️",
-            "Sharp" to "تباين حاد ⚡"
+            "Sharp" to "تباين حاد ⚡",
+            "B&W" to "أبيض وأسود 🎞️"
         )
         AlertDialog(
             onDismissRequest = { showVideoFiltersDialog = false },
@@ -2325,36 +2477,41 @@ private fun PlayerPillAction(
     isActive: Boolean,
     onClick: () -> Unit
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-            onClick = onClick
-        )
+    val bgAnimColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (isActive) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.65f),
+        animationSpec = tween(200),
+        label = "pill_bg"
+    )
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = bgAnimColor,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isActive) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.18f)
+        ),
+        tonalElevation = if (isActive) 4.dp else 0.dp
     ) {
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(if (isActive) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.6f)),
-            contentAlignment = Alignment.Center
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = if (isActive) MaterialTheme.colorScheme.onPrimary else Color.White,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(15.dp)
+            )
+            Spacer(Modifier.width(5.dp))
+            Text(
+                text = label,
+                color = if (isActive) MaterialTheme.colorScheme.onPrimary else Color.White,
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center,
+                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
             )
         }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = label,
-            color = Color.White,
-            fontSize = 11.sp,
-            textAlign = TextAlign.Center,
-            fontWeight = FontWeight.Medium
-        )
     }
 }
 
@@ -2365,26 +2522,44 @@ private fun GestureOverlayIndicator(
     progress: Float
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.8f)),
-        shape = RoundedCornerShape(16.dp)
+        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.85f)),
+        shape = RoundedCornerShape(24.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
     ) {
         Column(
-            modifier = Modifier.padding(20.dp),
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(36.dp))
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+            }
+            Text(
+                text = label,
+                color = Color.White.copy(alpha = 0.9f),
+                fontWeight = FontWeight.Medium,
+                fontSize = 13.sp
+            )
             LinearProgressIndicator(
                 progress = { progress },
-                modifier = Modifier.width(120.dp).height(6.dp).clip(RoundedCornerShape(3.dp)),
+                modifier = Modifier
+                    .width(140.dp)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp)),
                 color = MaterialTheme.colorScheme.primary,
-                trackColor = Color.White.copy(alpha = 0.3f)
+                trackColor = Color.White.copy(alpha = 0.25f)
             )
             Text(
                 text = "${(progress * 100).toInt()}%",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
+                fontSize = 15.sp
             )
         }
     }

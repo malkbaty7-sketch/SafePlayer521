@@ -39,7 +39,10 @@ fun SettingsScreen(
     onNavigateToPlaylists: () -> Unit,
     onNavigateToTasks: () -> Unit,
     onNavigateToSecurity: () -> Unit,
-    onNavigateToStorage: () -> Unit
+    onNavigateToStorage: () -> Unit,
+    onNavigateToIptv: () -> Unit = {},
+    onNavigateToWifiShare: () -> Unit = {},
+    onNavigateToAnalytics: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -261,6 +264,27 @@ fun SettingsScreen(
                             title = stringResource(R.string.item_storage_title),
                             subtitle = stringResource(R.string.item_storage_desc),
                             onClick = onNavigateToStorage
+                        )
+                        HorizontalDivider()
+                        SettingsNavRow(
+                            icon = Icons.Default.LiveTv,
+                            title = "بث IPTV والروابط المباشرة 📡",
+                            subtitle = "تشغيل روابط البث المباشر وقوائم قنوات M3U",
+                            onClick = onNavigateToIptv
+                        )
+                        HorizontalDivider()
+                        SettingsNavRow(
+                            icon = Icons.Default.Wifi,
+                            title = "المشاركة والنقل عبر Wi-Fi 💻",
+                            subtitle = "مشاركة ونقل الوسائط لاسلكياً مع الكمبيوتر والشاشات",
+                            onClick = onNavigateToWifiShare
+                        )
+                        HorizontalDivider()
+                        SettingsNavRow(
+                            icon = Icons.Default.Insights,
+                            title = "إحصائيات وسجل المشاهدة 📊",
+                            subtitle = "سجل ساعات المشاهدة ونسبة إنجاز محتوى المكتبة",
+                            onClick = onNavigateToAnalytics
                         )
                     }
                 }

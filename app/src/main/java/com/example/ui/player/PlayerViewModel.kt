@@ -196,6 +196,97 @@ class PlayerViewModel(
     private val _subtitleBgOpacity = MutableStateFlow(0.65f)
     val subtitleBgOpacity: StateFlow<Float> = _subtitleBgOpacity.asStateFlow()
 
+    private val _subtitleFontFamilyIndex = MutableStateFlow(0) // 0=Default, 1=Serif (نسخ), 2=Monospace (عريض), 3=Cursive (رقعة)
+    val subtitleFontFamilyIndex: StateFlow<Int> = _subtitleFontFamilyIndex.asStateFlow()
+
+    fun setSubtitleFontFamilyIndex(index: Int) {
+        _subtitleFontFamilyIndex.value = index.coerceIn(0, 3)
+    }
+
+    private val safeApp = application as? com.example.SafePlayerApp
+    private val _bookmarks = MutableStateFlow<List<com.example.bookmarks.VideoBookmark>>(emptyList())
+    val bookmarks: StateFlow<List<com.example.bookmarks.VideoBookmark>> = _bookmarks.asStateFlow()
+
+    fun refreshBookmarks() {
+        val mid = currentMediaId ?: return
+        if (mid <= 0) return
+        viewModelScope.launch(Dispatchers.IO) {
+            safeApp?.let {
+                _bookmarks.value = it.videoBookmarkDao.getBookmarksForMediaSync(mid)
+            }
+        }
+    }
+
+    fun addBookmark(title: String, note: String = "") {
+        val mid = currentMediaId ?: return
+        if (mid <= 0) return
+        val pos = _currentPosition.value
+        viewModelScope.launch(Dispatchers.IO) {
+            safeApp?.let {
+                it.videoBookmarkDao.insertBookmark(
+                    com.example.bookmarks.VideoBookmark(
+                        mediaId = mid,
+                        timestampMs = pos,
+                        title = title.ifBlank { "علامة عند " + formatTimeDisplay(pos) },
+                        note = note
+                    )
+                )
+                refreshBookmarks()
+            }
+        }
+    }
+
+    fun deleteBookmark(id: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            safeApp?.let {
+                it.videoBookmarkDao.deleteBookmarkById(id)
+                refreshBookmarks()
+            }
+        }
+    }
+
+    fun loadStreamUrl(url: String, title: String) {
+        currentMediaId = -1
+        _currentMedia.value = com.example.data.MediaItem(
+            id = -1,
+            name = title,
+            path = url,
+            folder = "بث مباشر",
+            mediaType = com.example.data.MediaType.VIDEO,
+            sizeBytes = 0L,
+            dateModified = System.currentTimeMillis() / 1000,
+            durationMs = 0L
+        )
+        _bookmarks.value = emptyList()
+        val p = player
+        if (p != null) {
+            p.setMediaItem(androidx.media3.common.MediaItem.fromUri(url))
+            p.prepare()
+            p.play()
+        } else {
+            pendingMediaItem = _currentMedia.value
+        }
+    }
+
+    fun loadSubtitleText(name: String, content: String) {
+        val cues = parseSubtitles(content)
+        if (cues.isNotEmpty()) {
+            _subtitleFileName.value = name
+            _subtitleCues.value = cues
+            _subtitlesEnabled.value = true
+            updateSubtitleForPosition(_currentPosition.value)
+        }
+    }
+
+    private fun formatTimeDisplay(ms: Long): String {
+        val totalSecs = ms / 1000
+        val mins = (totalSecs % 3600) / 60
+        val secs = totalSecs % 60
+        val hours = totalSecs / 3600
+        return if (hours > 0) String.format(java.util.Locale.getDefault(), "%02d:%02d:%02d", hours, mins, secs)
+        else String.format(java.util.Locale.getDefault(), "%02d:%02d", mins, secs)
+    }
+
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _isPlaying.value = isPlaying
@@ -284,6 +375,7 @@ class PlayerViewModel(
                 _markers.value = it
             }
         }
+        refreshBookmarks()
     }
 
     fun stopAndClearMedia() {
@@ -487,19 +579,24 @@ class PlayerViewModel(
                 _filterSaturation.value = 1f
             }
             "Cinema HDR" -> {
-                _filterBrightness.value = 0.04f
-                _filterContrast.value = 1.28f
-                _filterSaturation.value = 1.25f
+                _filterBrightness.value = 0.05f
+                _filterContrast.value = 1.32f
+                _filterSaturation.value = 1.30f
             }
             "Vivid" -> {
-                _filterBrightness.value = 0.06f
-                _filterContrast.value = 1.15f
-                _filterSaturation.value = 1.55f
+                _filterBrightness.value = 0.07f
+                _filterContrast.value = 1.20f
+                _filterSaturation.value = 1.60f
             }
-            "B&W" -> {
-                _filterBrightness.value = 0.02f
-                _filterContrast.value = 1.25f
-                _filterSaturation.value = 0f
+            "Ultra Clarity 4K" -> {
+                _filterBrightness.value = 0.06f
+                _filterContrast.value = 1.45f
+                _filterSaturation.value = 1.20f
+            }
+            "AMOLED True Black" -> {
+                _filterBrightness.value = -0.04f
+                _filterContrast.value = 1.40f
+                _filterSaturation.value = 1.25f
             }
             "Warm EyeCare" -> {
                 _filterBrightness.value = -0.05f
@@ -510,6 +607,11 @@ class PlayerViewModel(
                 _filterBrightness.value = 0.05f
                 _filterContrast.value = 1.38f
                 _filterSaturation.value = 1.1f
+            }
+            "B&W" -> {
+                _filterBrightness.value = 0.02f
+                _filterContrast.value = 1.25f
+                _filterSaturation.value = 0f
             }
         }
     }

@@ -27,9 +27,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         com.example.security.data.SecurityConfig::class,
         com.example.security.data.ProtectedItem::class,
         com.example.security.data.SecurityAuditLog::class,
-        com.example.storage.data.StorageLocation::class
+        com.example.storage.data.StorageLocation::class,
+        com.example.streaming.StreamChannel::class,
+        com.example.bookmarks.VideoBookmark::class
     ], 
-    version = 11, 
+    version = 12, 
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -39,6 +41,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun taskRecordDao(): com.example.tasks.data.TaskRecordDao
     abstract fun securityDao(): com.example.security.data.SecurityDao
     abstract fun storageLocationDao(): com.example.storage.data.StorageLocationDao
+    abstract fun streamChannelDao(): com.example.streaming.StreamChannelDao
+    abstract fun videoBookmarkDao(): com.example.bookmarks.VideoBookmarkDao
 
     companion object {
         @Volatile
@@ -162,6 +166,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Add stream_channels table
+                database.execSQL("CREATE TABLE IF NOT EXISTS `stream_channels` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `url` TEXT NOT NULL, `groupTitle` TEXT NOT NULL, `logoUrl` TEXT NOT NULL, `isFavorite` INTEGER NOT NULL, `addedAt` INTEGER NOT NULL)")
+                
+                // Add video_bookmarks table
+                database.execSQL("CREATE TABLE IF NOT EXISTS `video_bookmarks` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `mediaId` INTEGER NOT NULL, `timestampMs` INTEGER NOT NULL, `title` TEXT NOT NULL, `note` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, FOREIGN KEY(`mediaId`) REFERENCES `media_items`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_video_bookmarks_mediaId` ON `video_bookmarks` (`mediaId`)")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -169,7 +184,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "safeplayer_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

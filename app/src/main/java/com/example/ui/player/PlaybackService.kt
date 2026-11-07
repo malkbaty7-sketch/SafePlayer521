@@ -18,7 +18,13 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        player = ExoPlayer.Builder(this).build()
+        val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(this).apply {
+            setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            setEnableDecoderFallback(true)
+        }
+        player = ExoPlayer.Builder(this, renderersFactory)
+            .setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING)
+            .build()
         player.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
                 if (audioSessionId != C.AUDIO_SESSION_ID_UNSET && audioSessionId != 0) {

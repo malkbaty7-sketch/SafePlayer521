@@ -168,6 +168,40 @@ class MainActivity : ComponentActivity() {
                                         scope.launch {
                                             app.securityManager.toggleItemProtection("MEDIA", mediaId)
                                         }
+                                    },
+                                    onNavigateToIptv = {
+                                        navController.navigate("iptv_stream")
+                                    },
+                                    onNavigateToWifiShare = {
+                                        navController.navigate("wifi_transfer")
+                                    },
+                                    onNavigateToAnalytics = {
+                                        navController.navigate("watch_analytics")
+                                    }
+                                )
+                            }
+                            composable("iptv_stream") {
+                                com.example.ui.streaming.IptvStreamScreen(
+                                    app = app,
+                                    onNavigateBack = { navController.popBackStack() },
+                                    onPlayStreamUrl = { url, title ->
+                                        playerViewModel.loadStreamUrl(url, title)
+                                        navController.navigate("player/-1")
+                                    }
+                                )
+                            }
+                            composable("wifi_transfer") {
+                                com.example.ui.streaming.WifiTransferScreen(
+                                    app = app,
+                                    onNavigateBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable("watch_analytics") {
+                                com.example.ui.analytics.WatchAnalyticsScreen(
+                                    app = app,
+                                    onNavigateBack = { navController.popBackStack() },
+                                    onPlayMedia = { mediaId ->
+                                        navController.navigate("player/$mediaId")
                                     }
                                 )
                             }
@@ -180,7 +214,10 @@ class MainActivity : ComponentActivity() {
                                     onNavigateToPlaylists = { navController.navigate("playlists") },
                                     onNavigateToTasks = { navController.navigate("task_center") },
                                     onNavigateToSecurity = { navController.navigate("security") },
-                                    onNavigateToStorage = { navController.navigate("storage") }
+                                    onNavigateToStorage = { navController.navigate("storage") },
+                                    onNavigateToIptv = { navController.navigate("iptv_stream") },
+                                    onNavigateToWifiShare = { navController.navigate("wifi_transfer") },
+                                    onNavigateToAnalytics = { navController.navigate("watch_analytics") }
                                 )
                             }
                             composable("media_sources") {
@@ -282,10 +319,12 @@ class MainActivity : ComponentActivity() {
                             val startMs = backStackEntry.arguments?.getString("startMs")?.toLongOrNull()
                             
                             LaunchedEffect(id, startMs) {
-                                val item = app.repository.getMediaById(id).first()
-                                if (item != null) {
-                                    playerViewModel.loadMediaItem(item, startMs)
-                                    mainViewModel.markAsNotNew(id)
+                                if (id > 0) {
+                                    val item = app.repository.getMediaById(id).first()
+                                    if (item != null) {
+                                        playerViewModel.loadMediaItem(item, startMs)
+                                        mainViewModel.markAsNotNew(id)
+                                    }
                                 }
                             }
                             

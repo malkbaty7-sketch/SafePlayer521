@@ -118,16 +118,21 @@ class MediaScanner(
                     val parentName = if (path.isNotBlank()) File(path).parentFile?.name?.takeIf { it.isNotBlank() } else null
                     val folder: String = bucketName?.takeIf { it.isNotBlank() } ?: parentName ?: "Videos"
 
-                    currentPaths.add(uri)
-                    val result = processItem(uri, name, folder, MediaType.VIDEO, size, date, duration, mime, null, null)
-                    if (result == 1) newCount++
-                    if (result == 2) changedCount++
+                    val validVideoExts = listOf("mp4", "mkv", "webm", "avi", "3gp", "mov", "flv", "ts", "m4v")
+                    val isVideoExt = validVideoExts.any { name.endsWith(".$it", ignoreCase = true) || path.endsWith(".$it", ignoreCase = true) }
+                    val isVideoMime = mime?.startsWith("video/", ignoreCase = true) == true
+                    if (size > 0 && (isVideoExt || isVideoMime)) {
+                        currentPaths.add(uri)
+                        val result = processItem(uri, name, folder, MediaType.VIDEO, size, date, duration, mime, null, null)
+                        if (result == 1) newCount++
+                        if (result == 2) changedCount++
 
-                    processed++
-                    _progress.value = _progress.value.copy(
-                        scanned = processed, new = newCount, changed = changedCount,
-                        currentFolder = folder, currentFile = name
-                    )
+                        processed++
+                        _progress.value = _progress.value.copy(
+                            scanned = processed, new = newCount, changed = changedCount,
+                            currentFolder = folder, currentFile = name
+                        )
+                    }
                 }
             }
 
@@ -156,16 +161,21 @@ class MediaScanner(
                     val parentName = if (path.isNotBlank()) File(path).parentFile?.name?.takeIf { it.isNotBlank() } else null
                     val folder: String = parentName ?: album?.takeIf { it.isNotBlank() } ?: "Music"
 
-                    currentPaths.add(uri)
-                    val result = processItem(uri, name, folder, MediaType.AUDIO, size, date, duration, mime, artist, album)
-                    if (result == 1) newCount++
-                    if (result == 2) changedCount++
+                    val validAudioExts = listOf("mp3", "m4a", "aac", "wav", "ogg", "flac", "opus", "wma", "amr")
+                    val isAudioExt = validAudioExts.any { name.endsWith(".$it", ignoreCase = true) || path.endsWith(".$it", ignoreCase = true) }
+                    val isAudioMime = mime?.startsWith("audio/", ignoreCase = true) == true
+                    if (size > 0 && (isAudioExt || isAudioMime)) {
+                        currentPaths.add(uri)
+                        val result = processItem(uri, name, folder, MediaType.AUDIO, size, date, duration, mime, artist, album)
+                        if (result == 1) newCount++
+                        if (result == 2) changedCount++
 
-                    processed++
-                    _progress.value = _progress.value.copy(
-                        scanned = processed, new = newCount, changed = changedCount,
-                        currentFolder = folder, currentFile = name
-                    )
+                        processed++
+                        _progress.value = _progress.value.copy(
+                            scanned = processed, new = newCount, changed = changedCount,
+                            currentFolder = folder, currentFile = name
+                        )
+                    }
                 }
             }
 

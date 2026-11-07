@@ -64,7 +64,10 @@ fun HomeScreen(
     onNavigateToSources: () -> Unit = {},
     onNavigateToMediaDetails: (MediaItem) -> Unit = {},
     onNavigateToEditing: (Int) -> Unit = {},
-    onToggleVaultProtection: (Int) -> Unit = {}
+    onToggleVaultProtection: (Int) -> Unit = {},
+    onNavigateToIptv: () -> Unit = {},
+    onNavigateToWifiShare: () -> Unit = {},
+    onNavigateToAnalytics: () -> Unit = {}
 ) {
     val scanProgress by viewModel.scanProgress.collectAsState()
     val rawContinueWatching by viewModel.continueWatching.collectAsState()
@@ -72,18 +75,38 @@ fun HomeScreen(
     val rawFavorites by viewModel.favorites.collectAsState()
     val rawAllMedia by viewModel.allMedia.collectAsState()
 
-    // Filter protected items from casual browsing
-    val continueWatching = remember(rawContinueWatching, protectedMediaIds) {
-        rawContinueWatching.filter { it.id !in protectedMediaIds }
-    }
-    val recentlyPlayed = remember(rawRecentlyPlayed, protectedMediaIds) {
-        rawRecentlyPlayed.filter { it.id !in protectedMediaIds }
-    }
-    val favorites = remember(rawFavorites, protectedMediaIds) {
-        rawFavorites.filter { it.id !in protectedMediaIds }
-    }
+    val validVideoExts = remember { listOf("mp4", "mkv", "webm", "avi", "3gp", "mov", "flv", "ts", "m4v") }
+    val validAudioExts = remember { listOf("mp3", "m4a", "aac", "wav", "ogg", "flac", "opus", "wma", "amr") }
+
+    // Filter protected items and strictly guarantee ONLY video and audio files with actual media content are displayed
     val allMedia = remember(rawAllMedia, protectedMediaIds) {
-        rawAllMedia.filter { it.id !in protectedMediaIds }
+        rawAllMedia.filter { item ->
+            if (item.id in protectedMediaIds) return@filter false
+            val isAudio = item.mediaType == MediaType.AUDIO
+            val isVideo = item.mediaType == MediaType.VIDEO
+            if (!isAudio && !isVideo) return@filter false
+
+            val ext = item.name.substringAfterLast('.', "").lowercase()
+            val pathExt = item.path.substringAfterLast('.', "").lowercase()
+            val matchesExt = if (isVideo) {
+                validVideoExts.contains(ext) || validVideoExts.contains(pathExt) || item.mimeType?.startsWith("video/") == true
+            } else {
+                validAudioExts.contains(ext) || validAudioExts.contains(pathExt) || item.mimeType?.startsWith("audio/") == true
+            }
+            matchesExt
+        }
+    }
+    val continueWatching = remember(rawContinueWatching, allMedia) {
+        val validIds = allMedia.map { it.id }.toSet()
+        rawContinueWatching.filter { it.id in validIds }
+    }
+    val recentlyPlayed = remember(rawRecentlyPlayed, allMedia) {
+        val validIds = allMedia.map { it.id }.toSet()
+        rawRecentlyPlayed.filter { it.id in validIds }
+    }
+    val favorites = remember(rawFavorites, allMedia) {
+        val validIds = allMedia.map { it.id }.toSet()
+        rawFavorites.filter { it.id in validIds }
     }
 
     val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -264,6 +287,30 @@ fun HomeScreen(
                                         onNavigateToTaskCenter() 
                                     },
                                     leadingIcon = { Icon(Icons.Default.TaskAlt, contentDescription = null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("بث IPTV والروابط المباشرة 📡") },
+                                    onClick = { 
+                                        showMoreMenu = false
+                                        onNavigateToIptv() 
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.LiveTv, contentDescription = null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("المشاركة والنقل عبر Wi-Fi 💻") },
+                                    onClick = { 
+                                        showMoreMenu = false
+                                        onNavigateToWifiShare() 
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Wifi, contentDescription = null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("إحصائيات وسجل المشاهدة 📊") },
+                                    onClick = { 
+                                        showMoreMenu = false
+                                        onNavigateToAnalytics() 
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Insights, contentDescription = null) }
                                 )
                                 DropdownMenuItem(
                                     text = { Text("فحص الذاكرة وتحديث الملفات") },
@@ -593,6 +640,67 @@ fun HomeScreen(
                     }
                 }
 
+                // C. Pro Tools Shortcuts Bar (بث IPTV, نقل Wi-Fi, الإحصائيات)
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            onClick = onNavigateToIptv,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(Icons.Default.LiveTv, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(4.dp))
+                                Text("بث IPTV", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
+                        }
+
+                        Surface(
+                            onClick = onNavigateToWifiShare,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(Icons.Default.Wifi, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.secondary)
+                                Spacer(Modifier.width(4.dp))
+                                Text("نقل Wi-Fi", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                            }
+                        }
+
+                        Surface(
+                            onClick = onNavigateToAnalytics,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(Icons.Default.Insights, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.tertiary)
+                                Spacer(Modifier.width(4.dp))
+                                Text("إحصائيات", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                            }
+                        }
+                    }
+                }
+
                 // B. Hero Continue Watching Carousel (قسم متابعة المشاهدة البانورامي)
                 if (continueWatching.isNotEmpty()) {
                     item {
@@ -716,10 +824,10 @@ fun HomeScreen(
                                 // Video Folders grouped by MediaScanner folder name
                                 val videoMedia = allMedia.filter { it.mediaType == MediaType.VIDEO }
                                 val videoFolders = videoMedia.groupBy { it.folder.ifBlank { "Videos" } }
+                                val validVideoFolders = videoFolders.filter { it.value.isNotEmpty() }
                                 val recentlyAddedCount = videoMedia.count { it.isNew }
-                                
                                 item {
-                                    Text(String.format(stringResource(R.string.folder_count), videoFolders.size), 
+                                    Text(String.format(stringResource(R.string.folder_count), validVideoFolders.size), 
                                          modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp), 
                                          color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
@@ -737,8 +845,8 @@ fun HomeScreen(
                                     }
                                 }
 
-                                items(videoFolders.keys.toList().sorted()) { folderName ->
-                                    val count = videoFolders[folderName]?.size ?: 0
+                                items(validVideoFolders.keys.toList().sorted()) { folderName ->
+                                    val count = validVideoFolders[folderName]?.size ?: 0
                                     FolderListItem(
                                         title = folderName,
                                         count = count,
@@ -751,9 +859,10 @@ fun HomeScreen(
                                 val audioMedia = allMedia.filter { it.mediaType == MediaType.AUDIO }
                                 val audioFolders = audioMedia.groupBy { it.folder.ifBlank { "Music" } }
                                 val recentlyAddedCount = audioMedia.count { it.isNew }
+                                val validAudioFolders = audioFolders.filter { it.value.isNotEmpty() }
                                 
                                 item {
-                                    Text(String.format(stringResource(R.string.folder_count), audioFolders.size), 
+                                    Text(String.format(stringResource(R.string.folder_count), validAudioFolders.size), 
                                          modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp), 
                                          color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
@@ -771,8 +880,8 @@ fun HomeScreen(
                                     }
                                 }
 
-                                items(audioFolders.keys.toList().sorted()) { folderName ->
-                                    val count = audioFolders[folderName]?.size ?: 0
+                                items(validAudioFolders.keys.toList().sorted()) { folderName ->
+                                    val count = validAudioFolders[folderName]?.size ?: 0
                                     FolderListItem(
                                         title = folderName,
                                         count = count,
@@ -781,18 +890,19 @@ fun HomeScreen(
                                 }
                             }
                             2 -> {
-                                // My Files (Edited videos)
+                                // My Files (Edited videos & extracted audio)
                                 val myFiles = allMedia.filter { !it.isOriginal }
                                 val myFolders = myFiles.groupBy { it.folder.ifBlank { "SafePlayer" } }
+                                val validMyFolders = myFolders.filter { it.value.isNotEmpty() }
                                 
                                 item {
-                                    Text(String.format(stringResource(R.string.folder_count), myFolders.size), 
+                                    Text(String.format(stringResource(R.string.folder_count), validMyFolders.size), 
                                          modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp), 
                                          color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
 
-                                items(myFolders.keys.toList().sorted()) { folderName ->
-                                    val count = myFolders[folderName]?.size ?: 0
+                                items(validMyFolders.keys.toList().sorted()) { folderName ->
+                                    val count = validMyFolders[folderName]?.size ?: 0
                                     FolderListItem(
                                         title = folderName,
                                         count = count,
@@ -1017,17 +1127,18 @@ fun HeroContinueWatchingCard(
 
     Card(
         modifier = Modifier
-            .width(240.dp)
+            .width(260.dp)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(130.dp)
+                    .height(140.dp)
                     .background(Color.Black)
             ) {
                 if (media.mediaType == MediaType.VIDEO) {
@@ -1047,33 +1158,51 @@ fun HeroContinueWatchingCard(
                     }
                 }
 
-                // Gradient shadow
+                // High-end cinematic gradient overlay
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                                colors = listOf(
+                                    Color.Black.copy(alpha = 0.2f),
+                                    Color.Transparent,
+                                    Color.Black.copy(alpha = 0.85f)
+                                )
                             )
                         )
                 )
 
-                // Play Button Icon
+                // Central Pulse Play Button
                 Box(
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .size(42.dp)
+                        .size(46.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)),
-                    contentAlignment = Alignment.Center
+                        .background(Color.White.copy(alpha = 0.25f))
+                        .padding(4.dp)
                 ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = "استئناف", tint = MaterialTheme.colorScheme.onPrimary)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "استئناف",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
 
-                // Remaining time pill
+                // Remaining time pill badge
                 Surface(
-                    color = Color.Black.copy(alpha = 0.75f),
-                    shape = RoundedCornerShape(6.dp),
+                    color = Color.Black.copy(alpha = 0.8f),
+                    shape = RoundedCornerShape(8.dp),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, Color.White.copy(alpha = 0.2f)),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(8.dp)
@@ -1083,21 +1212,40 @@ fun HeroContinueWatchingCard(
                         color = Color.White,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+
+                // Category pill top-start
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                ) {
+                    Text(
+                        text = if (media.mediaType == MediaType.VIDEO) "فيديو" else "صوت",
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.ExtraBold,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
             }
 
-            // Progress Bar
+            // Modern Progress Indicator
             LinearProgressIndicator(
                 progress = { progress },
-                modifier = Modifier.fillMaxWidth().height(4.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp),
                 color = MaterialTheme.colorScheme.primary,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
 
-            // Info
-            Column(modifier = Modifier.padding(12.dp)) {
+            // Info row
+            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                 Text(
                     text = media.name,
                     fontWeight = FontWeight.Bold,
@@ -1105,12 +1253,27 @@ fun HeroContinueWatchingCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = "${media.folder} • ${(progress * 100).toInt()}% مكتمل",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Spacer(Modifier.height(3.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = media.folder,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "${(progress * 100).toInt()}%",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }
@@ -1127,8 +1290,9 @@ fun HomeMediaGridCard(
     val context = LocalContext.current
     Card(
         modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column {
@@ -1159,6 +1323,17 @@ fun HomeMediaGridCard(
                     )
                 }
 
+                // Subtle gradient on thumbnail
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))
+                            )
+                        )
+                )
+
                 // Duration badge
                 if (media.durationMs > 0) {
                     val totalSec = media.durationMs / 1000
@@ -1166,8 +1341,8 @@ fun HomeMediaGridCard(
                     val sec = totalSec % 60
                     val durStr = "%02d:%02d".format(min, sec)
                     Surface(
-                        color = Color.Black.copy(alpha = 0.75f),
-                        shape = RoundedCornerShape(4.dp),
+                        color = Color.Black.copy(alpha = 0.8f),
+                        shape = RoundedCornerShape(6.dp),
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(6.dp)
@@ -1177,7 +1352,7 @@ fun HomeMediaGridCard(
                             color = Color.White,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
                 }
@@ -1206,11 +1381,12 @@ fun HomeMediaGridCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = media.name,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    Spacer(Modifier.height(2.dp))
                     Text(
                         text = "${Formatter.formatFileSize(context, media.sizeBytes)} • ${media.folder}",
                         style = MaterialTheme.typography.labelSmall,
@@ -1221,12 +1397,13 @@ fun HomeMediaGridCard(
                 }
                 IconButton(
                     onClick = onMoreClick,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(28.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.MoreVert,
                         contentDescription = "خيارات",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }

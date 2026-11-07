@@ -232,9 +232,100 @@ fun MediaDetailsScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showAddToPlaylistDialog by remember { mutableStateOf(false) }
+    var showCompressDialog by remember { mutableStateOf(false) }
     var newPlaylistInputName by remember { mutableStateOf("") }
     val playlists by app.repository.allPlaylists.collectAsStateWithLifecycle(initialValue = emptyList())
     var newName by remember { mutableStateOf("") }
+
+    val compressState by com.example.converter.VideoCompressor.state.collectAsStateWithLifecycle()
+
+    if (showCompressDialog && mediaItem != null) {
+        var selectedPreset by remember { mutableStateOf(com.example.converter.VideoCompressor.CompressionPreset.BALANCED) }
+
+        AlertDialog(
+            onDismissRequest = {
+                if (!compressState.isCompressing) showCompressDialog = false
+            },
+            title = { Text("ضغط الفيديو وتوفير المساحة 📦", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("اختر مستوى الضغط المطلوب:", style = MaterialTheme.typography.bodyMedium)
+
+                    com.example.converter.VideoCompressor.CompressionPreset.values().forEach { preset ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = !compressState.isCompressing) { selectedPreset = preset }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            RadioButton(
+                                selected = selectedPreset == preset,
+                                onClick = { selectedPreset = preset },
+                                enabled = !compressState.isCompressing
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(preset.label, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Text(preset.scaleDesc, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+
+                    if (compressState.isCompressing) {
+                        Spacer(Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { compressState.progress },
+                            modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp))
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = compressState.statusMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    compressState.error?.let { err ->
+                        Text(err, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                if (!compressState.isCompressing) {
+                    Button(onClick = {
+                        com.example.converter.VideoCompressor.compressVideo(
+                            context = context,
+                            repository = app.repository,
+                            videoItem = mediaItem!!,
+                            preset = selectedPreset
+                        ) { success, _ ->
+                            if (success) {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar("تم ضغط الفيديو بنجاح وإضافته إلى المكتبة! ✅")
+                                }
+                                showCompressDialog = false
+                            }
+                        }
+                    }) {
+                        Text("بدء الضغط")
+                    }
+                } else {
+                    OutlinedButton(onClick = { com.example.converter.VideoCompressor.cancel() }) {
+                        Text("إلغاء")
+                    }
+                }
+            },
+            dismissButton = {
+                if (!compressState.isCompressing) {
+                    TextButton(onClick = { showCompressDialog = false }) {
+                        Text("إغلاق")
+                    }
+                }
+            }
+        )
+    }
 
     if (showRenameDialog && mediaItem != null) {
         AlertDialog(
@@ -464,6 +555,24 @@ fun MediaDetailsScreen(
                                 }
                             }
                         } else null,
+                        onExtractAudio = {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("جاري استخراج الصوت النقي من الفيديو...")
+                                val result = com.example.converter.AudioExtractor.extractAudio(
+                                    context = context,
+                                    repository = app.repository,
+                                    videoItem = media
+                                )
+                                if (result.isSuccess) {
+                                    snackbarHostState.showSnackbar("تم استخراج الصوت وإضافته لمكتبة الصوتيات! 🎵")
+                                } else {
+                                    snackbarHostState.showSnackbar(result.errorMessage ?: "فشل استخراج الصوت")
+                                }
+                            }
+                        },
+                        onCompressVideo = {
+                            showCompressDialog = true
+                        },
                         onToggleProtection = {
                             scope.launch {
                                 app.securityManager.toggleItemProtection("MEDIA", media.id)
@@ -768,11 +877,14 @@ fun QuickActionPillsRow(
     isProtected: Boolean,
     onPlayClick: () -> Unit,
     onEditClick: (() -> Unit)?,
+    onExtractAudio: (() -> Unit)? = null,
+    onCompressVideo: (() -> Unit)? = null,
     onToggleProtection: () -> Unit,
     onAddToPlaylist: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val isVideo = media.mediaType == com.example.data.MediaType.VIDEO || media.mimeType?.startsWith("video") == true
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 16.dp),
@@ -799,6 +911,32 @@ fun QuickActionPillsRow(
                     Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("استوديو التعديل")
+                }
+            }
+        }
+
+        if (isVideo && onExtractAudio != null) {
+            item {
+                OutlinedButton(
+                    onClick = onExtractAudio,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Audiotrack, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(6.dp))
+                    Text("استخراج الصوت")
+                }
+            }
+        }
+
+        if (isVideo && onCompressVideo != null) {
+            item {
+                OutlinedButton(
+                    onClick = onCompressVideo,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Compress, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
+                    Spacer(Modifier.width(6.dp))
+                    Text("ضغط الفيديو")
                 }
             }
         }
