@@ -1,7 +1,13 @@
 package com.example.ui.security
 
+import android.content.Context
+import android.content.ContextWrapper
 import android.text.format.Formatter
 import android.widget.Toast
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -63,6 +69,9 @@ fun SecurityScreen(
 
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = Safe Vault, 1 = Security & Parental Settings
     var showPinSetupDialog by remember { mutableStateOf(false) }
+    var showDisableAppLockDialog by remember { mutableStateOf(false) }
+    var currentPinInput by remember { mutableStateOf("") }
+    var disablePinError by remember { mutableStateOf<String?>(null) }
     var showDecoyPinDialog by remember { mutableStateOf(false) }
     var showParentalSetupDialog by remember { mutableStateOf(false) }
     var showParentAuthDialog by remember { mutableStateOf(false) }
@@ -189,8 +198,31 @@ fun SecurityScreen(
                                     if (config?.isBiometricEnabled == true) {
                                         FilledTonalButton(
                                             onClick = {
-                                                securityManager.unlockWithBiometrics()
-                                                Toast.makeText(context, "تم فتح الخزنة السرية بالبصمة 🔓", Toast.LENGTH_SHORT).show()
+                                                val activity = context.findFragmentActivity()
+                                                val availability = BiometricManager.from(context).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                                                if (activity == null) {
+                                                    Toast.makeText(context, "تعذر فتح نافذة التحقق البيومتري", Toast.LENGTH_SHORT).show()
+                                                } else if (availability != BiometricManager.BIOMETRIC_SUCCESS) {
+                                                    Toast.makeText(context, "البصمة غير متاحة أو لم تُعد على هذا الجهاز", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    val prompt = BiometricPrompt(
+                                                        activity,
+                                                        ContextCompat.getMainExecutor(context),
+                                                        object : BiometricPrompt.AuthenticationCallback() {
+                                                            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                                                                super.onAuthenticationSucceeded(result)
+                                                                securityManager.unlockWithBiometrics()
+                                                                Toast.makeText(context, "تم فتح الخزنة السرية بالبصمة 🔓", Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        }
+                                                    )
+                                                    val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                                                        .setTitle("فتح الخزنة السرية")
+                                                        .setSubtitle("تحقق من هويتك للمتابعة")
+                                                        .setNegativeButtonText("إلغاء")
+                                                        .build()
+                                                    prompt.authenticate(promptInfo)
+                                                }
                                             }
                                         ) {
                                             Icon(Icons.Default.Fingerprint, contentDescription = null)
@@ -359,9 +391,7 @@ fun SecurityScreen(
                                             if (enabled) {
                                                 showPinSetupDialog = true
                                             } else {
-                                                scope.launch {
-                                                    securityManager.disableAppLock("")
-                                                }
+                                                showDisableAppLockDialog = true
                                             }
                                         }
                                     )
@@ -685,6 +715,56 @@ fun SecurityScreen(
         )
     }
 
+    // Confirm the current real PIN before disabling the app lock.
+    if (showDisableAppLockDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showDisableAppLockDialog = false
+                currentPinInput = ""
+                disablePinError = null
+            },
+            title = { Text("تأكيد إيقاف القفل") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("أدخل رمز PIN الحقيقي لإيقاف حماية التطبيق.")
+                    OutlinedTextField(
+                        value = currentPinInput,
+                        onValueChange = { value -> if (value.length <= 6 && value.all { it.isDigit() }) currentPinInput = value },
+                        label = { Text("رمز PIN") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        isError = disablePinError != null
+                    )
+                    disablePinError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    scope.launch {
+                        val disabled = securityManager.disableAppLock(currentPinInput)
+                        if (disabled) {
+                            showDisableAppLockDialog = false
+                            currentPinInput = ""
+                            disablePinError = null
+                            Toast.makeText(context, "تم إيقاف قفل التطبيق", Toast.LENGTH_SHORT).show()
+                        } else {
+                            disablePinError = "رمز PIN غير صحيح"
+                        }
+                    }
+                }, enabled = currentPinInput.isNotBlank()) {
+                    Text("تأكيد")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDisableAppLockDialog = false
+                    currentPinInput = ""
+                    disablePinError = null
+                }) { Text("إلغاء") }
+            }
+        )
+    }
+
     // Decoy PIN Setup Dialog (وضع التمويه الذكي)
     if (showDecoyPinDialog) {
         var decoyPin by remember { mutableStateOf("") }
@@ -943,4 +1023,16 @@ private fun AuditLogItem(log: SecurityAuditLog) {
             Text(log.details, style = MaterialTheme.typography.bodySmall)
         }
     }
+}
+
+
+private fun Context.findFragmentActivity(): FragmentActivity? {
+    var current: Context? = this
+    while (current != null) {
+        if (current is FragmentActivity) return current
+        val next = (current as? ContextWrapper)?.baseContext ?: return null
+        if (next === current) return null
+        current = next
+    }
+    return null
 }

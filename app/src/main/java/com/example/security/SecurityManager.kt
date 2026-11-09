@@ -9,7 +9,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.security.MessageDigest
 import java.security.SecureRandom
 
 enum class SecurityAction {
@@ -158,12 +157,11 @@ class SecurityManager(
         }
 
         // Check Real PIN first
-        val computedReal = hashPin(enteredPin, config.salt)
-        val isRealMatch = MessageDigest.isEqual(
-            computedReal.toByteArray(Charsets.UTF_8),
-            config.pinHash.toByteArray(Charsets.UTF_8)
-        )
+        val isRealMatch = PinHasher.verify(enteredPin, config.salt, config.pinHash)
         if (isRealMatch) {
+            if (PinHasher.needsUpgrade(config.pinHash)) {
+                securityDao.saveSecurityConfig(config.copy(pinHash = hashPin(enteredPin, config.salt)))
+            }
             failedAttempts = 0
             lockoutUntilTimestamp = 0L
             _isUnlocked.value = true
@@ -178,12 +176,11 @@ class SecurityManager(
         val decoyHash = vaultPrefs.getString("decoy_pin_hash", null)
         val decoySalt = vaultPrefs.getString("decoy_salt", null)
         if (decoyHash != null && decoySalt != null) {
-            val computedDecoy = hashPin(enteredPin, decoySalt)
-            val isDecoyMatch = MessageDigest.isEqual(
-                computedDecoy.toByteArray(Charsets.UTF_8),
-                decoyHash.toByteArray(Charsets.UTF_8)
-            )
+            val isDecoyMatch = PinHasher.verify(enteredPin, decoySalt, decoyHash)
             if (isDecoyMatch) {
+                if (PinHasher.needsUpgrade(decoyHash)) {
+                    vaultPrefs.edit().putString("decoy_pin_hash", hashPin(enteredPin, decoySalt)).apply()
+                }
                 failedAttempts = 0
                 lockoutUntilTimestamp = 0L
                 _isUnlocked.value = true
@@ -205,7 +202,9 @@ class SecurityManager(
 
     suspend fun disableAppLock(currentPin: String): Boolean {
         val current = securityDao.getSecurityConfig() ?: return false
-        if (currentPin.isNotEmpty() && !verifyAppPin(currentPin)) return false
+        if (currentPin.isBlank() || current.pinHash == null || current.salt == null ||
+            !PinHasher.verify(currentPin, current.salt, current.pinHash)
+        ) return false
         val updated = current.copy(
             isAppLockEnabled = false,
             pinHash = null,
@@ -285,13 +284,12 @@ class SecurityManager(
             return false
         }
 
-        val computedHash = hashPin(enteredPin, config.parentPinSalt)
-        val matches = MessageDigest.isEqual(
-            computedHash.toByteArray(Charsets.UTF_8),
-            config.parentPinHash.toByteArray(Charsets.UTF_8)
-        )
+        val matches = PinHasher.verify(enteredPin, config.parentPinSalt, config.parentPinHash)
 
         if (matches) {
+            if (PinHasher.needsUpgrade(config.parentPinHash)) {
+                securityDao.saveSecurityConfig(config.copy(parentPinHash = hashPin(enteredPin, config.parentPinSalt)))
+            }
             failedAttempts = 0
             lockoutUntilTimestamp = 0L
             _isParentAuthorized.value = true
@@ -375,9 +373,5 @@ class SecurityManager(
         return salt.joinToString("") { "%02x".format(it) }
     }
 
-    private fun hashPin(pin: String, salt: String): String {
-        val md = MessageDigest.getInstance("SHA-256")
-        val bytes = md.digest((salt + pin).toByteArray())
-        return bytes.joinToString("") { "%02x".format(it) }
-    }
+    private fun hashPin(pin: String, salt: String): String = PinHasher.hash(pin, salt)
 }

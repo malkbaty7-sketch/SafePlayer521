@@ -26,7 +26,7 @@ class SafePlayerApp : Application() {
     val storageManager by lazy { com.example.storage.StorageManager(this, storageLocationDao, database.mediaDao(), securityManager) }
     val streamChannelDao by lazy { database.streamChannelDao() }
     val videoBookmarkDao by lazy { database.videoBookmarkDao() }
-    val wifiShareServer by lazy { com.example.streaming.WifiShareServer(this, repository) }
+    val wifiShareServer by lazy { com.example.streaming.WifiShareServer(this, repository, securityManager) }
     
     override fun onCreate() {
         super.onCreate()
