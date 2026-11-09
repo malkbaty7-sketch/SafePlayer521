@@ -323,12 +323,6 @@ class WifiShareServer(
         .replace("\"", "&quot;")
         .replace("'", "&#39;")
 
-    private fun generatePairingCode(): String {
-        val bytes = ByteArray(24)
-        SecureRandom().nextBytes(bytes)
-        return bytes.joinToString("") { "%02x".format(it) }
-    }
-
     companion object {
         private const val COOKIE_NAME = "SafePlayerSession"
         private const val MAX_UPLOAD_BYTES = 100L * 1024L * 1024L
