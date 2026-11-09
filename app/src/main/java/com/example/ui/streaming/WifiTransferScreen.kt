@@ -32,6 +32,7 @@ fun WifiTransferScreen(
     val server = app.wifiShareServer
 
     var isRunning by remember { mutableStateOf(server.isRunning) }
+    var serverAccessCode by remember { mutableStateOf(server.pairingCode) }
     var serverUrl by remember { mutableStateOf(if (server.isRunning) "http://${server.getIpAddress()}:8080" else "") }
     var statusText by remember { mutableStateOf(if (server.isRunning) "الخادم قيد التشغيل وجاهز للاتصال" else "الخادم متوقف") }
 
@@ -113,14 +114,17 @@ fun WifiTransferScreen(
                                     isRunning = running
                                     statusText = msg
                                     serverUrl = ""
+                                    serverAccessCode = ""
                                 }
                             } else {
                                 server.start { running, urlOrMsg ->
                                     isRunning = running
                                     if (running) {
                                         serverUrl = urlOrMsg
+                                        serverAccessCode = server.pairingCode
                                         statusText = "الخادم قيد التشغيل وجاهز للاتصال"
                                     } else {
+                                        serverAccessCode = ""
                                         statusText = urlOrMsg
                                     }
                                 }
@@ -174,6 +178,21 @@ fun WifiTransferScreen(
 
                         Spacer(Modifier.height(12.dp))
 
+                        Text(
+                            text = "رمز الاقتران: " + serverAccessCode,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = "استخدمه على شبكة موثوقة فقط؛ الاتصال المحلي لا يستخدم HTTPS.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center
+                        )
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -182,7 +201,7 @@ fun WifiTransferScreen(
                                 onClick = {
                                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                         type = "text/plain"
-                                        putExtra(Intent.EXTRA_TEXT, "افتح هذا الرابط على كمبيوترك لنقل الوسائط ومشاهدتها من الهاتف:\n$serverUrl")
+                                        putExtra(Intent.EXTRA_TEXT, "افتح هذا الرابط على كمبيوترك، ثم أدخل رمز الاقتران الظاهر على الهاتف:\n" + serverUrl + "\nرمز الاقتران: " + serverAccessCode)
                                     }
                                     context.startActivity(Intent.createChooser(shareIntent, "مشاركة رابط الخادم"))
                                 },
@@ -209,8 +228,8 @@ fun WifiTransferScreen(
                     Spacer(Modifier.height(10.dp))
                     InstructionStep(number = "1", text = "تأكد من اتصال هاتفك وجهاز الكمبيوتر أو التلفاز بنفس شبكة الـ Wi-Fi.")
                     InstructionStep(number = "2", text = "اضغط على زر (تشغيل خادم المشاركة الآن) أعلاه.")
-                    InstructionStep(number = "3", text = "افتح أي متصفح ويب على جهاز الكمبيوتر (Chrome, Edge, Safari) واكتب العنوان الظاهر.")
-                    InstructionStep(number = "4", text = "يمكنك الآن مشاهدة أي فيديو، تحميله إلى الكمبيوتر، أو رفع فيديوهات جديدة لهاتفك بدون أسلاك وبأعلى سرعة ممكنة!")
+                    InstructionStep(number = "3", text = "افتح الرابط في متصفح على شبكة موثوقة وأدخل رمز الاقتران.")
+                    InstructionStep(number = "4", text = "شاهد الوسائط غير المحمية أو نزّلها، وارفع ملفات حتى 100 MB.")
                 }
             }
         }

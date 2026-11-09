@@ -16,3 +16,8 @@
 local.properties
 .env
 debug.keystore
+
+# Never commit Android signing material
+*.jks
+*.jks.base64
+*.keystore
