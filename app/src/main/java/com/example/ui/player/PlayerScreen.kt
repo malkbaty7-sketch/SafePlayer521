@@ -49,6 +49,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -60,11 +61,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import android.view.LayoutInflater
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.example.R
 import com.example.data.MediaItem
+import com.example.ui.glass.*
 import kotlinx.coroutines.delay
 
 @Composable
@@ -75,6 +78,10 @@ fun PlayerScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
+
+    val liquidGlassController = viewModel.liquidGlassController
+    val liquidGlassConfig by liquidGlassController.config.collectAsState()
+    var showLiquidGlassSheet by remember { mutableStateOf(false) }
 
     val isPlayerReady by viewModel.isPlayerReady.collectAsState()
     val isPlaying by viewModel.isPlaying.collectAsState()
@@ -222,9 +229,39 @@ fun PlayerScreen(
         }
     }
 
+    // Real-time Liquid Glass video backdrop sampling (only active when glass UI is visible)
+    val anyGlassOverlayVisible = areControlsVisible ||
+        showLiquidGlassSheet ||
+        showPlaylistSheet ||
+        showBookmarksSheet ||
+        showSafeWatchSheet ||
+        showInfoDialog ||
+        showEqualizerDialog ||
+        showSubtitlesDialog ||
+        showOnlineSubtitlesDialog ||
+        showVideoFiltersDialog ||
+        showSleepTimerDialog ||
+        showSpeedDialog ||
+        showAddBookmarkDialog ||
+        showImportSafeWatchDialog ||
+        showMoreMenu ||
+        gestureBrightnessLevel != null ||
+        gestureVolumeLevel != null ||
+        doubleTapSeekFeedback != null ||
+        (subtitlesEnabled && !currentSubtitleText.isNullOrBlank())
+
+    LaunchedEffect(isPlayerReady, anyGlassOverlayVisible, liquidGlassConfig.blurRadius, liquidGlassConfig.enableLiveVideoRefraction) {
+        if (isPlayerReady && anyGlassOverlayVisible && !isAudio && liquidGlassConfig.blurRadius > 0.5f) {
+            while (true) {
+                liquidGlassController.sampleLiveVideoFrame()
+                delay(45L)
+            }
+        }
+    }
+
     // Auto-hide controls after 4 seconds of inactivity if playing and not locked
-    LaunchedEffect(areControlsVisible, isPlaying, userInteractedTime, isControlsLocked) {
-        if (areControlsVisible && isPlaying && !isControlsLocked) {
+    LaunchedEffect(areControlsVisible, isPlaying, userInteractedTime, isControlsLocked, showMoreMenu, showLiquidGlassSheet) {
+        if (areControlsVisible && isPlaying && !isControlsLocked && !showMoreMenu && !showLiquidGlassSheet) {
             delay(4000)
             areControlsVisible = false
         }
@@ -349,25 +386,29 @@ fun PlayerScreen(
                 }
             }
     ) {
-        // Video Surface with Pinch-to-Zoom & Pan
+        // Video Surface with Pinch-to-Zoom, Pan & Hardware TextureView for Liquid Glass Refraction
+        CompositionLocalProvider(LocalLiquidGlassController provides liquidGlassController) {
         if (isPlayerReady && viewModel.player != null) {
             AndroidView(
                 factory = { ctx ->
-                    PlayerView(ctx).apply {
+                    (LayoutInflater.from(ctx).inflate(R.layout.player_texture_view, null) as PlayerView).apply {
                         player = viewModel.player
                         useController = false
                         layoutParams = FrameLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
                         )
+                        liquidGlassController.attachPlayerView(this)
                     }
                 },
                 update = { playerView ->
+                    playerView.player = viewModel.player
                     playerView.resizeMode = when (aspectRatioMode) {
                         AspectRatioMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                         AspectRatioMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
                         AspectRatioMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     }
+                    liquidGlassController.attachPlayerView(playerView)
                 },
                 modifier = Modifier
                     .fillMaxSize()
@@ -377,6 +418,13 @@ fun PlayerScreen(
                         scaleY = zoomScale
                         translationX = zoomOffset.x
                         translationY = zoomOffset.y
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && isSafeBlurActive && isSafeModeEnabled) {
+                            renderEffect = android.graphics.RenderEffect.createBlurEffect(
+                                65f,
+                                65f,
+                                android.graphics.Shader.TileMode.CLAMP
+                            ).asComposeRenderEffect()
+                        }
                     }
             )
         } else {
@@ -387,7 +435,6 @@ fun PlayerScreen(
 
         // Live Video Filters Overlay (Brightness, Contrast, Saturation & Preset Tint)
         if (videoFilterPreset != "Normal" || filterBrightness != 0f || filterContrast != 1f || filterSaturation != 1f) {
-            // Brightness adjustment overlay
             if (filterBrightness > 0.01f) {
                 Box(
                     modifier = Modifier
@@ -401,7 +448,6 @@ fun PlayerScreen(
                         .background(Color.Black.copy(alpha = (-filterBrightness * 0.85f).coerceIn(0f, 0.65f)))
                 )
             }
-            // Preset & Saturation atmospheric tint
             val presetOverlayColor = when (videoFilterPreset) {
                 "Cinema HDR" -> Color(0xFF0D253F).copy(alpha = 0.12f)
                 "Vivid" -> Color(0xFFFF6F00).copy(alpha = 0.08f)
@@ -429,63 +475,68 @@ fun PlayerScreen(
             )
         }
 
-        // Smart Safe-Watch Privacy Blur / Shield Overlay (Track 3)
+        // Smart Safe-Watch Privacy Blur / Shield Overlay (Track 3 - Liquid Glass Shield)
         if (isSafeBlurActive && isSafeModeEnabled) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xFF0A101D).copy(alpha = 0.94f)),
+                    .background(Color(0xFF070C16).copy(alpha = 0.68f)),
                 contentAlignment = Alignment.Center
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.padding(24.dp)
+                LiquidGlassContainer(
+                    shape = RoundedCornerShape(28.dp),
+                    contentPadding = PaddingValues(horizontal = 28.dp, vertical = 22.dp),
+                    modifier = Modifier.padding(24.dp).widthIn(max = 440.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Shield,
-                        contentDescription = null,
-                        tint = Color(0xFF4CAF50),
-                        modifier = Modifier.size(64.dp)
-                    )
-                    Text(
-                        text = "🛡️ مشهد محجوب بواسطة الحارس العائلي",
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "تم تعتيم الشاشة تلقائياً لحماية المشاهدة العائلية حتى انتهاء المشهد",
-                        color = Color.White.copy(alpha = 0.75f),
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center
-                    )
-                    FilledTonalButton(
-                        onClick = { viewModel.seekRelative(5000L) }
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(Icons.Default.FastForward, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("تخطي المشهد فوراً (+5s)")
+                        Icon(
+                            imageVector = Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = Color(0xFF4CAF50),
+                            modifier = Modifier.size(56.dp)
+                        )
+                        Text(
+                            text = "🛡️ مشهد محجوب بواسطة الحارس العائلي",
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = "تم تضبيب الشاشة تلقائياً بتقنية الزجاج السائل لحماية المشاهدة العائلية حتى انتهاء المشهد",
+                            color = Color.White.copy(alpha = 0.80f),
+                            style = MaterialTheme.typography.bodySmall,
+                            textAlign = TextAlign.Center
+                        )
+                        FilledTonalButton(
+                            onClick = { viewModel.seekRelative(5000L) }
+                        ) {
+                            Icon(Icons.Default.FastForward, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("تخطي المشهد فوراً (+5s)")
+                        }
                     }
                 }
             }
         }
 
-        // Active Family Guard Notification Banner
+        // Active Family Guard Notification Banner (Liquid Glass Pill)
         if (safeWatchBannerMessage != null && isSafeModeEnabled) {
-            Surface(
-                color = Color(0xFF1B5E20).copy(alpha = 0.9f),
-                shape = RoundedCornerShape(20.dp),
+            LiquidGlassContainer(
+                shape = RoundedCornerShape(50),
+                isHighlighted = true,
+                highlightColor = Color(0xFF2E7D32),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(top = 56.dp, start = 16.dp, end = 16.dp)
+                    .padding(top = 62.dp, start = 16.dp, end = 16.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = Color(0xFF69F0AE), modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = safeWatchBannerMessage ?: "",
@@ -497,7 +548,7 @@ fun PlayerScreen(
             }
         }
 
-        // Synchronized External Subtitles Overlay
+        // Synchronized External Subtitles Overlay (Liquid Glass Subtitle Container)
         if (subtitlesEnabled && !currentSubtitleText.isNullOrBlank()) {
             val subColor = when (subtitleColorIndex) {
                 1 -> Color(0xFFFFEB3B) // Yellow
@@ -505,20 +556,18 @@ fun PlayerScreen(
                 3 -> Color(0xFF69F0AE) // Green
                 else -> Color.White
             }
-            Box(
+            LiquidGlassContainer(
+                shape = RoundedCornerShape(14.dp),
+                glassOpacityOverride = subtitleBgOpacity,
+                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
                     .padding(
-                        bottom = if (areControlsVisible && !isControlsLocked) 136.dp else 28.dp,
+                        bottom = if (areControlsVisible && !isControlsLocked) 144.dp else 28.dp,
                         start = 24.dp,
                         end = 24.dp
                     )
-                    .background(
-                        color = Color.Black.copy(alpha = subtitleBgOpacity),
-                        shape = RoundedCornerShape(10.dp)
-                    )
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 Text(
                     text = currentSubtitleText ?: "",
@@ -537,37 +586,24 @@ fun PlayerScreen(
             }
         }
 
-        // Floating Reset Zoom Pill when zoomed in
+        // Floating Reset Zoom Pill when zoomed in (Liquid Glass)
         if (zoomScale > 1.05f && !isControlsLocked) {
-            Surface(
+            LiquidGlassPill(
+                icon = Icons.Default.ZoomOutMap,
+                label = "تكبير ${(zoomScale * 100).toInt()}% • إعادة ضبط",
+                isActive = true,
                 onClick = {
                     zoomScale = 1f
                     zoomOffset = Offset.Zero
                 },
-                color = Color.Black.copy(alpha = 0.7f),
-                shape = RoundedCornerShape(20.dp),
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(top = 64.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.ZoomOutMap, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = "تكبير ${(zoomScale * 100).toInt()}% • إعادة ضبط",
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
+                    .padding(top = 66.dp)
+            )
         }
 
-        // Gesture Feedback Indicators
+        // Gesture Feedback Indicators (Liquid Glass HUDs)
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -589,14 +625,11 @@ fun PlayerScreen(
                     )
                 }
                 if (showZoomFeedback && gestureBrightnessLevel == null && gestureVolumeLevel == null) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.75f)),
-                        shape = RoundedCornerShape(16.dp)
+                    LiquidGlassContainer(
+                        shape = RoundedCornerShape(20.dp),
+                        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 12.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.ZoomIn, contentDescription = null, tint = Color.White)
                             Spacer(Modifier.width(8.dp))
                             Text(
@@ -616,19 +649,16 @@ fun PlayerScreen(
                     1 -> Alignment.CenterEnd
                     else -> Alignment.Center
                 }
-                Card(
-                    modifier = Modifier.align(alignment),
-                    colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.78f)),
-                    shape = RoundedCornerShape(24.dp)
+                LiquidGlassContainer(
+                    shape = RoundedCornerShape(24.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 14.dp),
+                    modifier = Modifier.align(alignment)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = if (doubleTapSide == -1) Icons.Default.Replay10 else Icons.Default.Forward10,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = Color(0xFF00E5FF),
                             modifier = Modifier.size(28.dp)
                         )
                         Spacer(Modifier.width(8.dp))
@@ -645,36 +675,30 @@ fun PlayerScreen(
 
         // Controls Layer
         if (isControlsLocked) {
-            // Screen is locked: Show only the Unlock Floating Pill when tapped
+            // Screen is locked: Show only the Liquid Glass Unlock Floating Pill when tapped
             AnimatedVisibility(
                 visible = areControlsVisible,
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier.align(Alignment.BottomEnd).padding(32.dp)
             ) {
-                FilledTonalButton(
+                LiquidGlassPill(
+                    icon = Icons.Default.LockOpen,
+                    label = stringResource(R.string.player_unlock_prompt),
+                    isActive = true,
                     onClick = {
                         viewModel.toggleControlsLock()
                         Toast.makeText(context, "تم فتح قفل الشاشة", Toast.LENGTH_SHORT).show()
                     },
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    ),
-                    shape = RoundedCornerShape(24.dp),
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
-                ) {
-                    Icon(Icons.Default.LockOpen, contentDescription = "Unlock")
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.player_unlock_prompt), fontWeight = FontWeight.Bold)
-                }
+                    testTag = "unlock_screen_button"
+                )
             }
         } else {
-            // Normal Controls Overlay
+            // Normal Controls Overlay (Liquid Glass UI System)
             AnimatedVisibility(
                 visible = areControlsVisible,
-                enter = fadeIn(tween(250)),
-                exit = fadeOut(tween(250))
+                enter = fadeIn(tween(240)),
+                exit = fadeOut(tween(240))
             ) {
                 Box(
                     modifier = Modifier
@@ -682,148 +706,204 @@ fun PlayerScreen(
                         .background(
                             Brush.verticalGradient(
                                 colors = listOf(
-                                    Color.Black.copy(alpha = 0.75f),
+                                    Color.Black.copy(alpha = 0.42f),
                                     Color.Transparent,
-                                    Color.Black.copy(alpha = 0.85f)
+                                    Color.Black.copy(alpha = 0.52f)
                                 )
                             )
                         )
                 ) {
-                    // SLEEK & COMPACT TOP BAR
-                    Row(
+                    // 1. FLOATING LIQUID GLASS TOP BAR
+                    LiquidGlassContainer(
+                        shape = RoundedCornerShape(22.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                         modifier = Modifier
+                            .align(Alignment.TopCenter)
                             .fillMaxWidth()
                             .statusBarsPadding()
-                            .padding(horizontal = 12.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        testTag = "player_top_glass_bar"
                     ) {
-                        IconButton(
-                            onClick = onNavigateBack,
-                            modifier = Modifier
-                                .size(34.dp)
-                                .background(Color.White.copy(alpha = 0.15f), CircleShape)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            LiquidGlassIconButton(
+                                icon = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Back",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                                onClick = onNavigateBack,
+                                size = 34.dp,
+                                iconSize = 18.dp,
+                                testTag = "player_back_button"
                             )
-                        }
 
-                        Spacer(Modifier.width(10.dp))
+                            Spacer(Modifier.width(10.dp))
 
-                        Text(
-                            text = currentMedia?.name ?: "SafePlayer Video",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = currentMedia?.name ?: "SafePlayer Video",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "Liquid Glass • Blur ${liquidGlassConfig.blurRadius.toInt()}px • ${(liquidGlassConfig.glassOpacity * 100).toInt()}%",
+                                    color = Color(0xFF80DEEA),
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1
+                                )
+                            }
 
-                        // Cast button
-                        IconButton(
-                            onClick = {
-                                Toast.makeText(context, "جاري البحث عن أجهزة العرض والشاشات الذكية...", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.size(34.dp)
-                        ) {
-                            Icon(Icons.Default.Cast, contentDescription = "Cast", tint = Color.White, modifier = Modifier.size(19.dp))
-                        }
+                            // Liquid Glass Studio Quick Trigger Button
+                            LiquidGlassIconButton(
+                                icon = Icons.Default.BlurOn,
+                                contentDescription = "Liquid Glass Studio",
+                                isActive = showLiquidGlassSheet,
+                                iconTint = Color(0xFF00E5FF),
+                                onClick = { showLiquidGlassSheet = true },
+                                size = 34.dp,
+                                iconSize = 19.dp,
+                                testTag = "top_liquid_glass_button"
+                            )
 
-                        // Subtitles CC
-                        IconButton(
-                            onClick = { showSubtitlesDialog = true },
-                            modifier = Modifier.size(34.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ClosedCaption,
+                            Spacer(Modifier.width(6.dp))
+
+                            // Cast button
+                            LiquidGlassIconButton(
+                                icon = Icons.Default.Cast,
+                                contentDescription = "Cast",
+                                onClick = {
+                                    Toast.makeText(context, "جاري البحث عن أجهزة العرض والشاشات الذكية...", Toast.LENGTH_SHORT).show()
+                                },
+                                size = 34.dp,
+                                iconSize = 18.dp
+                            )
+
+                            Spacer(Modifier.width(6.dp))
+
+                            // Subtitles CC
+                            LiquidGlassIconButton(
+                                icon = Icons.Default.ClosedCaption,
                                 contentDescription = "Subtitles",
-                                tint = if (subtitlesEnabled) MaterialTheme.colorScheme.primary else Color.White,
-                                modifier = Modifier.size(20.dp)
+                                isActive = subtitlesEnabled,
+                                onClick = { showSubtitlesDialog = true },
+                                size = 34.dp,
+                                iconSize = 19.dp
                             )
-                        }
 
-                        // Playlist
-                        IconButton(
-                            onClick = { showPlaylistSheet = true },
-                            modifier = Modifier.size(34.dp)
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = "Playlist", tint = Color.White, modifier = Modifier.size(20.dp))
-                        }
+                            Spacer(Modifier.width(6.dp))
 
-                        // 3 dots More Menu
-                        Box {
-                            IconButton(
-                                onClick = { showMoreMenu = true },
-                                modifier = Modifier.size(34.dp)
-                            ) {
-                                Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White, modifier = Modifier.size(20.dp))
-                            }
-                            DropdownMenu(
-                                expanded = showMoreMenu,
-                                onDismissRequest = { showMoreMenu = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.player_video_info)) },
-                                    leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        showInfoDialog = true
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.player_equalizer)) },
-                                    leadingIcon = { Icon(Icons.Default.Tune, contentDescription = null) },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        showEqualizerDialog = true
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.player_sleep_timer)) },
-                                    leadingIcon = { Icon(Icons.Default.Timer, contentDescription = null) },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        showSleepTimerDialog = true
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.player_safe_mode)) },
-                                    leadingIcon = { Icon(Icons.Default.Shield, contentDescription = null, tint = if (isSafeModeEnabled) Color(0xFF4CAF50) else LocalContentColor.current) },
-                                    trailingIcon = {
-                                        Switch(checked = isSafeModeEnabled, onCheckedChange = { viewModel.toggleSafeMode() })
-                                    },
-                                    onClick = {
-                                        viewModel.toggleSafeMode()
-                                        showMoreMenu = false
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.action_open_editing_studio)) },
-                                    leadingIcon = { Icon(Icons.Default.ContentCut, contentDescription = null) },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        currentMedia?.id?.let { onNavigateToEditing(it) }
-                                    }
-                                )
-                            }
+                            // Playlist
+                            LiquidGlassIconButton(
+                                icon = Icons.AutoMirrored.Filled.PlaylistPlay,
+                                contentDescription = "Playlist",
+                                onClick = { showPlaylistSheet = true },
+                                size = 34.dp,
+                                iconSize = 20.dp
+                            )
+
+                            Spacer(Modifier.width(6.dp))
+
+                            // 3 dots More Menu trigger
+                            LiquidGlassIconButton(
+                                icon = Icons.Default.MoreVert,
+                                contentDescription = "More",
+                                isActive = showMoreMenu,
+                                onClick = { showMoreMenu = !showMoreMenu },
+                                size = 34.dp,
+                                iconSize = 19.dp,
+                                testTag = "player_more_menu_button"
+                            )
                         }
                     }
 
-                    // CENTER QUICK ACTION ICONS (Matching Screenshot_٢٠٢٦٠٩١١-٢١٠٨٢٢.png)
+                    // FLOATING LIQUID GLASS POP-UP MENU (Sits directly over active video surface)
+                    LiquidGlassPopupMenu(
+                        expanded = showMoreMenu,
+                        onDismissRequest = { showMoreMenu = false },
+                        items = listOf(
+                            LiquidGlassMenuItem(
+                                title = "استوديو الزجاج السائل 💧",
+                                icon = Icons.Default.BlurOn,
+                                iconTint = Color(0xFF00E5FF),
+                                badgeText = "${liquidGlassConfig.blurRadius.toInt()}px",
+                                onClick = {
+                                    showMoreMenu = false
+                                    showLiquidGlassSheet = true
+                                }
+                            ),
+                            LiquidGlassMenuItem(
+                                title = stringResource(R.string.player_video_info),
+                                icon = Icons.Default.Info,
+                                onClick = {
+                                    showMoreMenu = false
+                                    showInfoDialog = true
+                                }
+                            ),
+                            LiquidGlassMenuItem(
+                                title = stringResource(R.string.player_equalizer),
+                                icon = Icons.Default.Tune,
+                                badgeText = if (isEqualizerEnabled) equalizerPreset else null,
+                                onClick = {
+                                    showMoreMenu = false
+                                    showEqualizerDialog = true
+                                }
+                            ),
+                            LiquidGlassMenuItem(
+                                title = stringResource(R.string.player_sleep_timer),
+                                icon = Icons.Default.Timer,
+                                onClick = {
+                                    showMoreMenu = false
+                                    showSleepTimerDialog = true
+                                }
+                            ),
+                            LiquidGlassMenuItem(
+                                title = stringResource(R.string.player_safe_mode),
+                                icon = Icons.Default.Shield,
+                                iconTint = if (isSafeModeEnabled) Color(0xFF69F0AE) else Color.White,
+                                isSwitch = true,
+                                switchChecked = isSafeModeEnabled,
+                                onClick = {
+                                    viewModel.toggleSafeMode()
+                                }
+                            ),
+                            LiquidGlassMenuItem(
+                                title = stringResource(R.string.action_open_editing_studio),
+                                icon = Icons.Default.ContentCut,
+                                onClick = {
+                                    showMoreMenu = false
+                                    currentMedia?.id?.let { onNavigateToEditing(it) }
+                                }
+                            )
+                        ),
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .statusBarsPadding()
+                            .padding(top = 60.dp, end = 16.dp)
+                    )
+
+                    // 2. CENTER LIQUID GLASS QUICK ACTION PILLS
                     Row(
                         modifier = Modifier
                             .align(Alignment.Center)
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
                             .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Liquid Glass Studio Quick Pill (الزجاج السائل 💧)
+                        PlayerPillAction(
+                            icon = Icons.Default.BlurOn,
+                            label = "الزجاج السائل 💧",
+                            isActive = showLiquidGlassSheet,
+                            onClick = { showLiquidGlassSheet = true }
+                        )
+
                         // Instant Snapshot (التقاط صورة فورية من الفيديو 📸)
                         if (!isAudio) {
                             PlayerPillAction(
@@ -997,7 +1077,7 @@ fun PlayerScreen(
                             }
                         )
 
-                        // Lock Orientation (تأمين وضع الشاشة الحالية لمنع الانقلاب)
+                        // Lock Orientation
                         PlayerPillAction(
                             icon = if (isOrientationLocked) Icons.Default.Lock else Icons.Default.LockOpen,
                             label = if (isOrientationLocked) "فك التأمين" else "تأمين الوضع",
@@ -1051,280 +1131,261 @@ fun PlayerScreen(
                         )
                     }
 
-                    // BOTTOM CONTROLS & TIMELINE
-                    Column(
+                    // 3. FLOATING LIQUID GLASS BOTTOM CONTROLS & TIMELINE DECK
+                    LiquidGlassContainer(
+                        shape = RoundedCornerShape(26.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .navigationBarsPadding()
-                            .padding(bottom = 12.dp, start = 16.dp, end = 16.dp)
+                            .padding(bottom = 10.dp, start = 14.dp, end = 14.dp),
+                        testTag = "player_bottom_glass_deck"
                     ) {
-                        // Active A-B Repeat Status Banner, Sleep Timer Countdown & Bookmarks Quick Chips
-                        if (abPointA != null || sleepTimerMinutes != null || markers.isNotEmpty()) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // Active A-B Repeat Status Banner, Sleep Timer Countdown & Bookmarks Quick Chips
+                            if (abPointA != null || sleepTimerMinutes != null || markers.isNotEmpty()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 6.dp)
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (sleepTimerMinutes != null) {
+                                        val timerText = if (sleepTimerMinutes == -1) {
+                                            "مؤقت النوم: عند انتهاء المقطع"
+                                        } else {
+                                            "مؤقت النوم: ${formatDuration((sleepTimerRemainingSeconds ?: 0L) * 1000L)}"
+                                        }
+                                        LiquidGlassPill(
+                                            icon = Icons.Default.Timer,
+                                            label = timerText,
+                                            isActive = true,
+                                            activeColor = Color(0xFF00897B),
+                                            onClick = { showSleepTimerDialog = true }
+                                        )
+                                    }
+
+                                    if (abPointA != null) {
+                                        val aStr = formatDuration(abPointA ?: 0L)
+                                        val bStr = abPointB?.let { formatDuration(it) } ?: "..."
+                                        LiquidGlassPill(
+                                            icon = Icons.Default.RepeatOne,
+                                            label = "تكرار A-B ($aStr - $bStr) ✕",
+                                            isActive = true,
+                                            onClick = { viewModel.clearAbRepeat() }
+                                        )
+                                    }
+
+                                    markers.forEach { marker ->
+                                        LiquidGlassPill(
+                                            icon = Icons.Default.Bookmark,
+                                            label = "${marker.name} (${formatDuration(marker.timeMs)})",
+                                            isActive = false,
+                                            onClick = { viewModel.seekTo(marker.timeMs) }
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Sleek Timeline Seek Bar & Time Labels
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 6.dp)
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (sleepTimerMinutes != null) {
-                                    Surface(
-                                        onClick = { showSleepTimerDialog = true },
-                                        color = Color(0xFF00897B),
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(Icons.Default.Timer, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                            Spacer(Modifier.width(4.dp))
-                                            val timerText = if (sleepTimerMinutes == -1) {
-                                                "مؤقت النوم: عند انتهاء المقطع"
-                                            } else {
-                                                "مؤقت النوم: ${formatDuration((sleepTimerRemainingSeconds ?: 0L) * 1000L)}"
-                                            }
-                                            Text(
-                                                text = timerText,
-                                                color = Color.White,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
-                                }
-
-                                if (abPointA != null) {
-                                    Surface(
-                                        onClick = { viewModel.clearAbRepeat() },
-                                        color = MaterialTheme.colorScheme.primary,
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(Icons.Default.RepeatOne, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(14.dp))
-                                            Spacer(Modifier.width(4.dp))
-                                            val aStr = formatDuration(abPointA ?: 0L)
-                                            val bStr = abPointB?.let { formatDuration(it) } ?: "..."
-                                            Text(
-                                                text = "تكرار A-B ($aStr - $bStr) ✕",
-                                                color = MaterialTheme.colorScheme.onPrimary,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
-                                }
-
-                                markers.forEach { marker ->
-                                    Surface(
-                                        onClick = { viewModel.seekTo(marker.timeMs) },
-                                        color = Color.White.copy(alpha = 0.2f),
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(Icons.Default.Bookmark, contentDescription = null, tint = Color(0xFFFFD54F), modifier = Modifier.size(14.dp))
-                                            Spacer(Modifier.width(4.dp))
-                                            Text(
-                                                text = "${marker.name} (${formatDuration(marker.timeMs)})",
-                                                color = Color.White,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Sleek Timeline Seek Bar & Time Labels
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = formatDuration(currentPosition),
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-
-                            Slider(
-                                value = if (duration > 0) currentPosition.toFloat() else 0f,
-                                onValueChange = { targetPos ->
-                                    viewModel.seekTo(targetPos.toLong())
-                                    userInteractedTime = System.currentTimeMillis()
-                                },
-                                valueRange = 0f..(if (duration > 0) duration.toFloat() else 1f),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .padding(horizontal = 8.dp),
-                                colors = SliderDefaults.colors(
-                                    thumbColor = MaterialTheme.colorScheme.primary,
-                                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                                    inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                                Text(
+                                    text = formatDuration(currentPosition),
+                                    color = Color.White,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
-                            )
 
-                            val remainingMs = (duration - currentPosition).coerceAtLeast(0L)
-                            Text(
-                                text = "-${formatDuration(remainingMs)}",
-                                color = Color.White.copy(alpha = 0.85f),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        Spacer(Modifier.height(4.dp))
-
-                        // Compact Playback Action Buttons Row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Aspect Ratio
-                            IconButton(
-                                onClick = {
-                                    viewModel.cycleAspectRatio()
-                                    Toast.makeText(context, context.getString(aspectRatioMode.labelRes), Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(Icons.Default.FitScreen, contentDescription = "Aspect Ratio", tint = Color.White, modifier = Modifier.size(19.dp))
-                            }
-
-                            // Playback Speed quick button
-                            Text(
-                                text = "${playbackSpeed}X",
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(Color.White.copy(alpha = 0.15f))
-                                    .clickable { showSpeedDialog = true }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-
-                            // Rewind 10s
-                            IconButton(
-                                onClick = { viewModel.seekRelative(-10000L) },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(Icons.Default.Replay10, contentDescription = "Rewind 10s", tint = Color.White, modifier = Modifier.size(22.dp))
-                            }
-
-                            // Previous
-                            IconButton(
-                                onClick = { viewModel.playPrevious() },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = Color.White, modifier = Modifier.size(24.dp))
-                            }
-
-                            // Play / Pause (Compact Circle with Long Press for Background Play)
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isVideoBgPlayEnabled) Color(0xFF2196F3) else Color.White)
-                                    .pointerInput(currentMedia, isVideoBgPlayEnabled) {
-                                        detectTapGestures(
-                                            onTap = { viewModel.togglePlayPause() },
-                                            onLongPress = {
-                                                if (!isAudio) {
-                                                    val enabled = viewModel.toggleVideoBgPlay()
-                                                    Toast.makeText(
-                                                        context,
-                                                        if (enabled) "تم تفعيل تشغيل الفيديو في الخلفية 🎧"
-                                                        else "تم إيقاف تشغيل الفيديو في الخلفية",
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
-                                                } else {
-                                                    Toast.makeText(context, "الصوت يعمل في الخلفية تلقائياً 🎧", Toast.LENGTH_SHORT).show()
-                                                }
-                                            }
-                                        )
+                                Slider(
+                                    value = if (duration > 0) currentPosition.toFloat() else 0f,
+                                    onValueChange = { targetPos ->
+                                        viewModel.seekTo(targetPos.toLong())
+                                        userInteractedTime = System.currentTimeMillis()
                                     },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = "Play/Pause",
-                                    tint = if (isVideoBgPlayEnabled) Color.White else Color.Black,
-                                    modifier = Modifier.size(24.dp)
+                                    valueRange = 0f..(if (duration > 0) duration.toFloat() else 1f),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(32.dp)
+                                        .padding(horizontal = 8.dp),
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color(0xFF00E5FF),
+                                        activeTrackColor = Color(0xFF00E5FF),
+                                        inactiveTrackColor = Color.White.copy(alpha = 0.28f)
+                                    )
+                                )
+
+                                val remainingMs = (duration - currentPosition).coerceAtLeast(0L)
+                                Text(
+                                    text = "-${formatDuration(remainingMs)}",
+                                    color = Color.White.copy(alpha = 0.88f),
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
 
-                            // Next
-                            IconButton(
-                                onClick = { viewModel.playNext() },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White, modifier = Modifier.size(24.dp))
-                            }
+                            Spacer(Modifier.height(4.dp))
 
-                            // Forward 10s
-                            IconButton(
-                                onClick = { viewModel.seekRelative(10000L) },
-                                modifier = Modifier.size(36.dp)
+                            // Compact Playback Action Buttons Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.Forward10, contentDescription = "Forward 10s", tint = Color.White, modifier = Modifier.size(22.dp))
-                            }
+                                // Aspect Ratio
+                                LiquidGlassIconButton(
+                                    icon = Icons.Default.FitScreen,
+                                    contentDescription = "Aspect Ratio",
+                                    onClick = {
+                                        viewModel.cycleAspectRatio()
+                                        Toast.makeText(context, context.getString(aspectRatioMode.labelRes), Toast.LENGTH_SHORT).show()
+                                    },
+                                    size = 36.dp,
+                                    iconSize = 18.dp
+                                )
 
-                            // Lock Screen Controls (🔒)
-                            IconButton(
-                                onClick = {
-                                    viewModel.toggleControlsLock()
-                                    Toast.makeText(context, context.getString(R.string.player_screen_locked), Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(Icons.Default.LockOpen, contentDescription = "Lock", tint = Color.White, modifier = Modifier.size(19.dp))
+                                // Playback Speed quick pill
+                                LiquidGlassContainer(
+                                    shape = RoundedCornerShape(10.dp),
+                                    isHighlighted = playbackSpeed != 1.0f,
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
+                                    onClick = { showSpeedDialog = true }
+                                ) {
+                                    Text(
+                                        text = "${playbackSpeed}X",
+                                        color = Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                // Rewind 10s
+                                LiquidGlassIconButton(
+                                    icon = Icons.Default.Replay10,
+                                    contentDescription = "Rewind 10s",
+                                    onClick = { viewModel.seekRelative(-10000L) },
+                                    size = 38.dp,
+                                    iconSize = 20.dp
+                                )
+
+                                // Previous
+                                LiquidGlassIconButton(
+                                    icon = Icons.Default.SkipPrevious,
+                                    contentDescription = "Previous",
+                                    onClick = { viewModel.playPrevious() },
+                                    size = 38.dp,
+                                    iconSize = 22.dp
+                                )
+
+                                // Play / Pause (Liquid Glass Illuminated Orb with Long Press for Background Play)
+                                LiquidGlassContainer(
+                                    shape = CircleShape,
+                                    isHighlighted = true,
+                                    highlightColor = if (isVideoBgPlayEnabled) Color(0xFF00B0FF) else MaterialTheme.colorScheme.primary,
+                                    borderWidth = 1.5.dp,
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .pointerInput(currentMedia, isVideoBgPlayEnabled) {
+                                            detectTapGestures(
+                                                onTap = { viewModel.togglePlayPause() },
+                                                onLongPress = {
+                                                    if (!isAudio) {
+                                                        val enabled = viewModel.toggleVideoBgPlay()
+                                                        Toast.makeText(
+                                                            context,
+                                                            if (enabled) "تم تفعيل تشغيل الفيديو في الخلفية 🎧"
+                                                            else "تم إيقاف تشغيل الفيديو في الخلفية",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    } else {
+                                                        Toast.makeText(context, "الصوت يعمل في الخلفية تلقائياً 🎧", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            )
+                                        },
+                                    testTag = "play_pause_glass_orb"
+                                ) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                            contentDescription = "Play/Pause",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(26.dp)
+                                        )
+                                    }
+                                }
+
+                                // Next
+                                LiquidGlassIconButton(
+                                    icon = Icons.Default.SkipNext,
+                                    contentDescription = "Next",
+                                    onClick = { viewModel.playNext() },
+                                    size = 38.dp,
+                                    iconSize = 22.dp
+                                )
+
+                                // Forward 10s
+                                LiquidGlassIconButton(
+                                    icon = Icons.Default.Forward10,
+                                    contentDescription = "Forward 10s",
+                                    onClick = { viewModel.seekRelative(10000L) },
+                                    size = 38.dp,
+                                    iconSize = 20.dp
+                                )
+
+                                // Lock Screen Controls (🔒)
+                                LiquidGlassIconButton(
+                                    icon = Icons.Default.LockOpen,
+                                    contentDescription = "Lock",
+                                    onClick = {
+                                        viewModel.toggleControlsLock()
+                                        Toast.makeText(context, context.getString(R.string.player_screen_locked), Toast.LENGTH_SHORT).show()
+                                    },
+                                    size = 36.dp,
+                                    iconSize = 18.dp
+                                )
                             }
                         }
                     }
                 }
             }
         }
-    }
 
-    // DIALOG: Video Information
-    if (showInfoDialog) {
+        // LIQUID GLASS BOTTOM SHEET: Real-time Liquid Glass Customizer Studio (SeekBars + Presets)
+        LiquidGlassCustomizerSheet(
+            visible = showLiquidGlassSheet,
+            onDismissRequest = { showLiquidGlassSheet = false },
+            controller = liquidGlassController
+        )
+
+        // LIQUID GLASS DIALOG: Video Information
         val media = currentMedia
-        AlertDialog(
+        LiquidGlassDialog(
+            visible = showInfoDialog,
             onDismissRequest = { showInfoDialog = false },
-            title = { Text(stringResource(R.string.player_video_info), fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("اسم الملف: ${media?.name ?: "غير معروف"}")
-                    Text("المسار: ${media?.path ?: "غير معروف"}")
-                    Text("الحجم: ${formatFileSize(media?.sizeBytes ?: 0L)}")
-                    Text("المدة: ${formatDuration(duration)}")
-                    Text("النوع البرمجي: ${media?.mimeType ?: "فيديو"}")
-                    Text("النوع: ${if (media?.mediaType == com.example.data.MediaType.VIDEO) "فيديو" else "صوت"}")
-                }
-            },
+            title = stringResource(R.string.player_video_info),
             confirmButton = {
                 TextButton(onClick = { showInfoDialog = false }) {
-                    Text(stringResource(R.string.action_close))
+                    Text(stringResource(R.string.action_close), color = Color(0xFF00E5FF))
                 }
             }
-        )
-    }
+        ) {
+            Text("اسم الملف: ${media?.name ?: "غير معروف"}", color = Color.White)
+            Text("المسار: ${media?.path ?: "غير معروف"}", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
+            Text("الحجم: ${formatFileSize(media?.sizeBytes ?: 0L)}", color = Color.White)
+            Text("المدة: ${formatDuration(duration)}", color = Color.White)
+            Text("النوع البرمجي: ${media?.mimeType ?: "فيديو"}", color = Color.White)
+            Text("النوع: ${if (media?.mediaType == com.example.data.MediaType.VIDEO) "فيديو" else "صوت"}", color = Color.White)
+        }
 
-    // DIALOG: Professional 5-Band Equalizer & Audio Boost
-    if (showEqualizerDialog) {
+        // LIQUID GLASS DIALOG: Professional 5-Band Equalizer & Audio Boost
         val bandLabels = listOf("60Hz", "230Hz", "910Hz", "3.6kHz", "14kHz")
-        val presets = listOf(
+        val eqPresets = listOf(
             "Flat" to "طبيعي Flat",
             "Cinema" to "سينما 🎬",
             "Podcast" to "بودكاست 🎙️",
@@ -1334,110 +1395,15 @@ fun PlayerScreen(
             "Rock" to "روك 🎸",
             "Classical" to "كلاسيك 🎻"
         )
-        AlertDialog(
+        LiquidGlassDialog(
+            visible = showEqualizerDialog,
             onDismissRequest = { showEqualizerDialog = false },
-            title = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("موازن الصوت الاحترافي 🎚️", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                    Switch(
-                        checked = isEqualizerEnabled,
-                        onCheckedChange = { viewModel.setEqualizerEnabled(it) }
-                    )
-                }
-            },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Presets Row
-                    Text("الأنماط الصوتية الجاهزة:", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        presets.forEach { (presetKey, labelAr) ->
-                            FilterChip(
-                                selected = equalizerPreset == presetKey,
-                                onClick = { viewModel.setEqualizerPreset(presetKey) },
-                                enabled = isEqualizerEnabled,
-                                label = { Text(labelAr) }
-                            )
-                        }
-                    }
-
-                    HorizontalDivider()
-
-                    // 5-Band Sliders
-                    Text("ترددات الصوت (5-Band EQ):", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
-                    bandLabels.forEachIndexed { idx, freqLabel ->
-                        val levelDb = eqBandLevels.getOrElse(idx) { 0f }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = freqLabel,
-                                modifier = Modifier.width(52.dp),
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Slider(
-                                value = levelDb,
-                                onValueChange = { viewModel.setEqBandLevel(idx, it) },
-                                valueRange = -15f..15f,
-                                enabled = isEqualizerEnabled,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Text(
-                                text = "${if (levelDb >= 0) "+" else ""}${levelDb.toInt()}dB",
-                                modifier = Modifier.width(46.dp),
-                                textAlign = TextAlign.End,
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        }
-                    }
-
-                    HorizontalDivider()
-
-                    // Bass Boost Slider
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("تضخيم الصوت الجهوري (Bass Boost)", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
-                        Text("$bassBoostLevel%", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    }
-                    Slider(
-                        value = bassBoostLevel.toFloat(),
-                        onValueChange = { viewModel.setBassBoost(it.toInt()) },
-                        valueRange = 0f..100f,
-                        enabled = isEqualizerEnabled
-                    )
-
-                    // Volume / Loudness Boost Slider
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("مضاعفة مستوى الصوت (Loudness Boost)", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
-                        Text("+${volumeBoostLevel}%", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
-                    }
-                    Slider(
-                        value = volumeBoostLevel.toFloat(),
-                        onValueChange = { viewModel.setVolumeBoost(it.toInt()) },
-                        valueRange = 0f..100f,
-                        enabled = isEqualizerEnabled
-                    )
-                }
+            title = "موازن الصوت الاحترافي 🎚️",
+            headerTrailing = {
+                Switch(
+                    checked = isEqualizerEnabled,
+                    onCheckedChange = { viewModel.setEqualizerEnabled(it) }
+                )
             },
             confirmButton = {
                 Button(onClick = { showEqualizerDialog = false }) {
@@ -1446,502 +1412,350 @@ fun PlayerScreen(
             },
             dismissButton = {
                 TextButton(onClick = { viewModel.resetEqualizer() }) {
-                    Text("إعادة ضبط")
+                    Text("إعادة ضبط", color = Color.White.copy(alpha = 0.8f))
                 }
             }
-        )
-    }
+        ) {
+            Text("الأنماط الصوتية الجاهزة:", color = Color.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                eqPresets.forEach { (presetKey, labelAr) ->
+                    LiquidGlassPill(
+                        icon = Icons.Default.Tune,
+                        label = labelAr,
+                        isActive = equalizerPreset == presetKey,
+                        onClick = { if (isEqualizerEnabled) viewModel.setEqualizerPreset(presetKey) }
+                    )
+                }
+            }
 
-    // DIALOG: External Subtitles Settings (SRT / VTT)
-    if (showSubtitlesDialog) {
+            HorizontalDivider(color = Color.White.copy(alpha = 0.12f))
+
+            Text("ترددات الصوت (5-Band EQ):", color = Color.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
+            bandLabels.forEachIndexed { idx, freqLabel ->
+                val levelDb = eqBandLevels.getOrElse(idx) { 0f }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = freqLabel,
+                        color = Color.White,
+                        modifier = Modifier.width(52.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Slider(
+                        value = levelDb,
+                        onValueChange = { viewModel.setEqBandLevel(idx, it) },
+                        valueRange = -15f..15f,
+                        enabled = isEqualizerEnabled,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "${if (levelDb >= 0) "+" else ""}${levelDb.toInt()}dB",
+                        color = Color(0xFF00E5FF),
+                        modifier = Modifier.width(46.dp),
+                        textAlign = TextAlign.End,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            }
+
+            HorizontalDivider(color = Color.White.copy(alpha = 0.12f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("تضخيم الصوت الجهوري (Bass Boost)", color = Color.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
+                Text("$bassBoostLevel%", color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = bassBoostLevel.toFloat(),
+                onValueChange = { viewModel.setBassBoost(it.toInt()) },
+                valueRange = 0f..100f,
+                enabled = isEqualizerEnabled
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("مضاعفة مستوى الصوت (Loudness Boost)", color = Color.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
+                Text("+${volumeBoostLevel}%", color = Color(0xFFFFD54F), fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = volumeBoostLevel.toFloat(),
+                onValueChange = { viewModel.setVolumeBoost(it.toInt()) },
+                valueRange = 0f..100f,
+                enabled = isEqualizerEnabled
+            )
+        }
+
+        // LIQUID GLASS DIALOG: External Subtitles Settings (SRT / VTT)
         val colorOptions = listOf(
             0 to ("أبيض" to Color.White),
             1 to ("أصفر" to Color(0xFFFFEB3B)),
             2 to ("سماوي" to Color(0xFF00E5FF)),
             3 to ("أخضر" to Color(0xFF69F0AE))
         )
-        AlertDialog(
+        LiquidGlassDialog(
+            visible = showSubtitlesDialog,
             onDismissRequest = { showSubtitlesDialog = false },
-            title = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("إعدادات الترجمة (SRT / VTT) 📝", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                    Switch(
-                        checked = subtitlesEnabled,
-                        onCheckedChange = { viewModel.toggleSubtitles(it) }
-                    )
-                }
-            },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Active file status
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                text = subtitleFileName ?: "لم يتم اختيار ملف ترجمة بعد",
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Text(
-                                text = if (subtitleCues.isNotEmpty()) "عدد الجمل المحملة: ${subtitleCues.size} جملة" else "يدعم ملفات .srt و .vtt باللغة العربية والإنجليزية",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    // Load File / Online / Sample Buttons
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = { 
-                                subtitlePickerLauncher.launch(
-                                    arrayOf("application/x-subrip", "text/vtt", "text/plain", "*/*")
-                                ) 
-                            },
-                            modifier = Modifier.weight(1.2f)
-                        ) {
-                            Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("فتح ملف ترجمة (SRT/VTT)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                        OutlinedButton(
-                            onClick = { showOnlineSubtitlesDialog = true },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("بحث أونلاين", fontSize = 11.sp)
-                        }
-                        FilledTonalButton(
-                            onClick = {
-                                viewModel.loadSampleArabicSubtitles()
-                                Toast.makeText(context, "تم تفعيل الترجمة التجريبية العربية 📝", Toast.LENGTH_SHORT).show()
-                            }
-                        ) {
-                            Text("تجريبية", fontSize = 11.sp)
-                        }
-                    }
-
-                    HorizontalDivider()
-
-                    // Arabic Font Selector
-                    Text("نوع الخط العربي للترجمة:", fontWeight = FontWeight.SemiBold)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(0 to "افتراضي", 1 to "نسخ", 2 to "عريض", 3 to "رقعة").forEach { (idx, label) ->
-                            FilterChip(
-                                selected = subtitleFontFamilyIndex == idx,
-                                onClick = { viewModel.setSubtitleFontFamilyIndex(idx) },
-                                label = { Text(label) }
-                            )
-                        }
-                    }
-
-                    HorizontalDivider()
-
-                    // Subtitle Sync Delay (-0.5s, -0.1s, 0.0s, +0.1s, +0.5s)
-                    val delaySeconds = subtitleDelayMs / 1000.0
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("مزامنة توقيت الترجمة:", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            text = String.format("%+.1f ثانية", delaySeconds),
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        OutlinedButton(
-                            onClick = { viewModel.adjustSubtitleDelay(-500L) },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                        ) { Text("-0.5s") }
-                        OutlinedButton(
-                            onClick = { viewModel.adjustSubtitleDelay(-100L) },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                        ) { Text("-0.1s") }
-                        TextButton(
-                            onClick = { viewModel.resetSubtitleDelay() }
-                        ) { Text("0.0s") }
-                        OutlinedButton(
-                            onClick = { viewModel.adjustSubtitleDelay(100L) },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                        ) { Text("+0.1s") }
-                        OutlinedButton(
-                            onClick = { viewModel.adjustSubtitleDelay(500L) },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                        ) { Text("+0.5s") }
-                    }
-
-                    HorizontalDivider()
-
-                    // Font Size Slider
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("حجم خط الترجمة:", fontWeight = FontWeight.SemiBold)
-                        Text("${subtitleFontSizeSp.toInt()} SP", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    }
-                    Slider(
-                        value = subtitleFontSizeSp,
-                        onValueChange = { viewModel.setSubtitleFontSize(it) },
-                        valueRange = 14f..30f
-                    )
-
-                    // Text Color Selector
-                    Text("لون النص:", fontWeight = FontWeight.SemiBold)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        colorOptions.forEach { (idx, pair) ->
-                            val (name, colorVal) = pair
-                            FilterChip(
-                                selected = subtitleColorIndex == idx,
-                                onClick = { viewModel.setSubtitleColorIndex(idx) },
-                                label = { Text(name) },
-                                leadingIcon = {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(12.dp)
-                                            .clip(CircleShape)
-                                            .background(colorVal)
-                                            .border(1.dp, Color.Gray, CircleShape)
-                                    )
-                                }
-                            )
-                        }
-                    }
-
-                    // Background Opacity Slider
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("شفافية خلفية الترجمة:", fontWeight = FontWeight.SemiBold)
-                        Text("${(subtitleBgOpacity * 100).toInt()}%", fontWeight = FontWeight.Bold)
-                    }
-                    Slider(
-                        value = subtitleBgOpacity,
-                        onValueChange = { viewModel.setSubtitleBgOpacity(it) },
-                        valueRange = 0f..1f
-                    )
-                }
+            title = "إعدادات الترجمة (SRT / VTT) 📝",
+            headerTrailing = {
+                Switch(
+                    checked = subtitlesEnabled,
+                    onCheckedChange = { viewModel.toggleSubtitles(it) }
+                )
             },
             confirmButton = {
                 Button(onClick = { showSubtitlesDialog = false }) {
                     Text("إغلاق")
                 }
             },
-            dismissButton = {
-                if (subtitleCues.isNotEmpty()) {
+            dismissButton = if (subtitleCues.isNotEmpty()) {
+                {
                     TextButton(onClick = { viewModel.clearSubtitles() }) {
-                        Text("إزالة الترجمة", color = MaterialTheme.colorScheme.error)
+                        Text("إزالة الترجمة", color = Color(0xFFFF5252))
                     }
                 }
+            } else null
+        ) {
+            LiquidGlassContainer(
+                shape = RoundedCornerShape(14.dp),
+                contentPadding = PaddingValues(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = subtitleFileName ?: "لم يتم اختيار ملف ترجمة بعد",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = if (subtitleCues.isNotEmpty()) "عدد الجمل المحملة: ${subtitleCues.size} جملة" else "يدعم ملفات .srt و .vtt باللغة العربية والإنجليزية",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.72f)
+                    )
+                }
             }
-        )
-    }
 
-    // DIALOG: Smart Online Subtitles Search & 1-Tap Load
-    if (showOnlineSubtitlesDialog) {
-        var isSearching by remember { mutableStateOf(false) }
-        var searchResults by remember { mutableStateOf<List<com.example.subtitles.SubtitleDownloader.SubtitleResult>>(emptyList()) }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        subtitlePickerLauncher.launch(
+                            arrayOf("application/x-subrip", "text/vtt", "text/plain", "*/*")
+                        )
+                    },
+                    modifier = Modifier.weight(1.2f)
+                ) {
+                    Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("فتح ملف (SRT/VTT)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                OutlinedButton(
+                    onClick = { showOnlineSubtitlesDialog = true },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Language, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("بحث أونلاين", color = Color.White, fontSize = 11.sp)
+                }
+                FilledTonalButton(
+                    onClick = {
+                        viewModel.loadSampleArabicSubtitles()
+                        Toast.makeText(context, "تم تفعيل الترجمة التجريبية العربية 📝", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Text("تجريبية", fontSize = 11.sp)
+                }
+            }
 
-        LaunchedEffect(Unit) {
-            isSearching = true
-            searchResults = com.example.subtitles.SubtitleDownloader.searchSubtitles(currentMedia?.name ?: "video")
-            isSearching = false
+            HorizontalDivider(color = Color.White.copy(alpha = 0.12f))
+
+            Text("نوع الخط العربي للترجمة:", color = Color.White, fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(0 to "افتراضي", 1 to "نسخ", 2 to "عريض", 3 to "رقعة").forEach { (idx, label) ->
+                    FilterChip(
+                        selected = subtitleFontFamilyIndex == idx,
+                        onClick = { viewModel.setSubtitleFontFamilyIndex(idx) },
+                        label = { Text(label, color = Color.White) }
+                    )
+                }
+            }
+
+            HorizontalDivider(color = Color.White.copy(alpha = 0.12f))
+
+            val delaySeconds = subtitleDelayMs / 1000.0
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("مزامنة توقيت الترجمة:", color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = String.format("%+.1f ثانية", delaySeconds),
+                    color = Color(0xFF00E5FF),
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                OutlinedButton(
+                    onClick = { viewModel.adjustSubtitleDelay(-500L) },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) { Text("-0.5s", color = Color.White) }
+                OutlinedButton(
+                    onClick = { viewModel.adjustSubtitleDelay(-100L) },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) { Text("-0.1s", color = Color.White) }
+                TextButton(
+                    onClick = { viewModel.resetSubtitleDelay() }
+                ) { Text("0.0s", color = Color(0xFF00E5FF)) }
+                OutlinedButton(
+                    onClick = { viewModel.adjustSubtitleDelay(100L) },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) { Text("+0.1s", color = Color.White) }
+                OutlinedButton(
+                    onClick = { viewModel.adjustSubtitleDelay(500L) },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) { Text("+0.5s", color = Color.White) }
+            }
+
+            HorizontalDivider(color = Color.White.copy(alpha = 0.12f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("حجم خط الترجمة:", color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text("${subtitleFontSizeSp.toInt()} SP", color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = subtitleFontSizeSp,
+                onValueChange = { viewModel.setSubtitleFontSize(it) },
+                valueRange = 14f..30f
+            )
+
+            Text("لون النص:", color = Color.White, fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                colorOptions.forEach { (idx, pair) ->
+                    val (name, colorVal) = pair
+                    FilterChip(
+                        selected = subtitleColorIndex == idx,
+                        onClick = { viewModel.setSubtitleColorIndex(idx) },
+                        label = { Text(name, color = Color.White) },
+                        leadingIcon = {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .clip(CircleShape)
+                                    .background(colorVal)
+                                    .border(1.dp, Color.Gray, CircleShape)
+                            )
+                        }
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("شفافية خلفية الترجمة:", color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text("${(subtitleBgOpacity * 100).toInt()}%", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = subtitleBgOpacity,
+                onValueChange = { viewModel.setSubtitleBgOpacity(it) },
+                valueRange = 0f..1f
+            )
         }
 
-        AlertDialog(
-            onDismissRequest = { showOnlineSubtitlesDialog = false },
-            title = { Text("البحث الذكي عن الترجمات 🌐", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = "نتائج البحث لـ: ${currentMedia?.name ?: ""}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (isSearching) {
-                        Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator()
-                        }
-                    } else if (searchResults.isEmpty()) {
-                        Text("لم يتم العثور على ترجمات متطابقة.", color = MaterialTheme.colorScheme.error)
-                    } else {
-                        searchResults.forEach { sub ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        viewModel.loadSubtitleText(sub.title, sub.srtContent)
-                                        Toast.makeText(context, "تم تطبيق الترجمة بنجاح! 📝", Toast.LENGTH_SHORT).show()
-                                        showOnlineSubtitlesDialog = false
-                                        showSubtitlesDialog = false
-                                    },
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.Subtitles, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                    Spacer(Modifier.width(10.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(sub.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                        Spacer(Modifier.height(2.dp))
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Surface(
-                                                shape = RoundedCornerShape(4.dp),
-                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                            ) {
-                                                Text(
-                                                    text = sub.language,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(sub.source, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showOnlineSubtitlesDialog = false }) {
-                    Text("إغلاق")
-                }
+        // LIQUID GLASS DIALOG: Smart Online Subtitles Search & 1-Tap Load
+        if (showOnlineSubtitlesDialog) {
+            var isSearching by remember { mutableStateOf(false) }
+            var searchResults by remember { mutableStateOf<List<com.example.subtitles.SubtitleDownloader.SubtitleResult>>(emptyList()) }
+
+            LaunchedEffect(Unit) {
+                isSearching = true
+                searchResults = com.example.subtitles.SubtitleDownloader.searchSubtitles(currentMedia?.name ?: "video")
+                isSearching = false
             }
-        )
-    }
 
-    // DIALOG: Smart Sleep Timer with Live Countdown
-    if (showSleepTimerDialog) {
-        AlertDialog(
-            onDismissRequest = { showSleepTimerDialog = false },
-            title = { Text("مؤقت النوم الذكي ⏰", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (sleepTimerMinutes != null) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = if (sleepTimerMinutes == -1) {
-                                        "سيتم إيقاف التشغيل عند انتهاء المقطع الحالي"
-                                    } else {
-                                        "الوقت المتبقي: ${formatDuration((sleepTimerRemainingSeconds ?: 0L) * 1000L)}"
-                                    },
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    if (sleepTimerMinutes != -1) {
-                                        FilledTonalButton(
-                                            onClick = {
-                                                viewModel.extendSleepTimer(5)
-                                                Toast.makeText(context, "تم تمديد مؤقت النوم +5 دقائق ⏰", Toast.LENGTH_SHORT).show()
-                                            }
-                                        ) {
-                                            Text("+5 دقائق إضافية")
-                                        }
-                                    }
-                                    OutlinedButton(
-                                        onClick = {
-                                            viewModel.setSleepTimer(null)
-                                            Toast.makeText(context, "تم إيقاف مؤقت النوم", Toast.LENGTH_SHORT).show()
-                                        }
-                                    ) {
-                                        Text("إلغاء المؤقت")
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    listOf(
-                        null to stringResource(R.string.player_sleep_timer_off),
-                        5 to "5 دقائق",
-                        10 to "10 دقائق",
-                        15 to "15 دقيقة",
-                        20 to "20 دقيقة",
-                        30 to "30 دقيقة",
-                        45 to "45 دقيقة",
-                        60 to "60 دقيقة",
-                        -1 to stringResource(R.string.player_sleep_timer_end_video)
-                    ).forEach { (minutes, label) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    viewModel.setSleepTimer(minutes)
-                                    showSleepTimerDialog = false
-                                    Toast.makeText(context, "تم ضبط مؤقت النوم: $label", Toast.LENGTH_SHORT).show()
-                                }
-                                .padding(vertical = 8.dp, horizontal = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = sleepTimerMinutes == minutes,
-                                onClick = {
-                                    viewModel.setSleepTimer(minutes)
-                                    showSleepTimerDialog = false
-                                }
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(label, style = MaterialTheme.typography.bodyLarge)
-                        }
+            LiquidGlassDialog(
+                visible = showOnlineSubtitlesDialog,
+                onDismissRequest = { showOnlineSubtitlesDialog = false },
+                title = "البحث الذكي عن الترجمات 🌐",
+                confirmButton = {
+                    TextButton(onClick = { showOnlineSubtitlesDialog = false }) {
+                        Text("إغلاق", color = Color.White)
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { showSleepTimerDialog = false }) {
-                    Text(stringResource(R.string.action_close))
-                }
-            }
-        )
-    }
-
-    // DIALOG: Speed Selector
-    if (showSpeedDialog) {
-        AlertDialog(
-            onDismissRequest = { showSpeedDialog = false },
-            title = { Text("سرعة التشغيل", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f).forEach { speed ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    viewModel.setPlaybackSpeed(speed)
-                                    showSpeedDialog = false
-                                }
-                                .padding(vertical = 8.dp, horizontal = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = kotlin.math.abs(playbackSpeed - speed) < 0.05f,
-                                onClick = {
-                                    viewModel.setPlaybackSpeed(speed)
-                                    showSpeedDialog = false
-                                }
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text("${speed}X", style = MaterialTheme.typography.bodyLarge, fontWeight = if (playbackSpeed == speed) FontWeight.Bold else FontWeight.Normal)
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showSpeedDialog = false }) {
-                    Text(stringResource(R.string.action_close))
-                }
-            }
-        )
-    }
-
-    // BOTTOM SHEET: Playlist Items
-    if (showPlaylistSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showPlaylistSheet = false }
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
             ) {
                 Text(
-                    text = "قائمة المقاطع (${playlistItems.size})",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 12.dp)
+                    text = "نتائج البحث لـ: ${currentMedia?.name ?: ""}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.75f)
                 )
-
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(playlistItems) { item ->
-                        val isCurrent = item.id == currentMedia?.id
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    viewModel.loadMediaItem(item)
-                                    showPlaylistSheet = false
-                                },
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-                            )
+                if (isSearching) {
+                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Color(0xFF00E5FF))
+                    }
+                } else if (searchResults.isEmpty()) {
+                    Text("لم يتم العثور على ترجمات متطابقة.", color = Color(0xFFFF5252))
+                } else {
+                    searchResults.forEach { sub ->
+                        LiquidGlassContainer(
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(12.dp),
+                            onClick = {
+                                viewModel.loadSubtitleText(sub.title, sub.srtContent)
+                                Toast.makeText(context, "تم تطبيق الترجمة بنجاح! 📝", Toast.LENGTH_SHORT).show()
+                                showOnlineSubtitlesDialog = false
+                                showSubtitlesDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = if (isCurrent) Icons.Default.PlayArrow else Icons.Default.VideoLibrary,
-                                    contentDescription = null,
-                                    tint = if (isCurrent) MaterialTheme.colorScheme.primary else LocalContentColor.current
-                                )
-                                Spacer(Modifier.width(12.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Subtitles, contentDescription = null, tint = Color(0xFF00E5FF))
+                                Spacer(Modifier.width(10.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = item.name,
-                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = formatDuration(item.durationMs),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Text(sub.title, color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                    Spacer(Modifier.height(2.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = Color(0xFF00E5FF).copy(alpha = 0.2f)
+                                        ) {
+                                            Text(
+                                                text = sub.language,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF00E5FF),
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(sub.source, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f))
+                                    }
                                 }
                             }
                         }
@@ -1949,30 +1763,193 @@ fun PlayerScreen(
                 }
             }
         }
-    }
 
-    // DIALOG: Add Bookmark (حفظ علامة مرجعية)
-    if (showAddBookmarkDialog) {
-        val bookmarkTime = currentPosition
-        AlertDialog(
-            onDismissRequest = { showAddBookmarkDialog = false },
-            title = { Text("حفظ علامة مرجعية 🔖", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "التوقيت المحدد: ${formatDuration(bookmarkTime)}",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold
+        // LIQUID GLASS DIALOG: Smart Sleep Timer with Live Countdown
+        LiquidGlassDialog(
+            visible = showSleepTimerDialog,
+            onDismissRequest = { showSleepTimerDialog = false },
+            title = "مؤقت النوم الذكي ⏰",
+            confirmButton = {
+                TextButton(onClick = { showSleepTimerDialog = false }) {
+                    Text(stringResource(R.string.action_close), color = Color.White)
+                }
+            }
+        ) {
+            if (sleepTimerMinutes != null) {
+                LiquidGlassContainer(
+                    shape = RoundedCornerShape(16.dp),
+                    isHighlighted = true,
+                    contentPadding = PaddingValues(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = if (sleepTimerMinutes == -1) {
+                                "سيتم إيقاف التشغيل عند انتهاء المقطع الحالي"
+                            } else {
+                                "الوقت المتبقي: ${formatDuration((sleepTimerRemainingSeconds ?: 0L) * 1000L)}"
+                            },
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (sleepTimerMinutes != -1) {
+                                FilledTonalButton(
+                                    onClick = {
+                                        viewModel.extendSleepTimer(5)
+                                        Toast.makeText(context, "تم تمديد مؤقت النوم +5 دقائق ⏰", Toast.LENGTH_SHORT).show()
+                                    }
+                                ) {
+                                    Text("+5 دقائق إضافية")
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.setSleepTimer(null)
+                                    Toast.makeText(context, "تم إيقاف مؤقت النوم", Toast.LENGTH_SHORT).show()
+                                }
+                            ) {
+                                Text("إلغاء المؤقت", color = Color.White)
+                            }
+                        }
+                    }
+                }
+            }
+
+            listOf(
+                null to stringResource(R.string.player_sleep_timer_off),
+                5 to "5 دقائق",
+                10 to "10 دقائق",
+                15 to "15 دقيقة",
+                20 to "20 دقيقة",
+                30 to "30 دقيقة",
+                45 to "45 دقيقة",
+                60 to "60 دقيقة",
+                -1 to stringResource(R.string.player_sleep_timer_end_video)
+            ).forEach { (minutes, label) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            viewModel.setSleepTimer(minutes)
+                            showSleepTimerDialog = false
+                            Toast.makeText(context, "تم ضبط مؤقت النوم: $label", Toast.LENGTH_SHORT).show()
+                        }
+                        .padding(vertical = 6.dp, horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = sleepTimerMinutes == minutes,
+                        onClick = {
+                            viewModel.setSleepTimer(minutes)
+                            showSleepTimerDialog = false
+                        }
                     )
-                    OutlinedTextField(
-                        value = bookmarkNoteInput,
-                        onValueChange = { bookmarkNoteInput = it },
-                        label = { Text("عنوان أو ملاحظة المشهد") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                    Spacer(Modifier.width(8.dp))
+                    Text(label, color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+        }
+
+        // LIQUID GLASS DIALOG: Speed Selector
+        LiquidGlassDialog(
+            visible = showSpeedDialog,
+            onDismissRequest = { showSpeedDialog = false },
+            title = "سرعة التشغيل ⚡",
+            confirmButton = {
+                TextButton(onClick = { showSpeedDialog = false }) {
+                    Text(stringResource(R.string.action_close), color = Color.White)
+                }
+            }
+        ) {
+            listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f).forEach { speed ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            viewModel.setPlaybackSpeed(speed)
+                            showSpeedDialog = false
+                        }
+                        .padding(vertical = 6.dp, horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = kotlin.math.abs(playbackSpeed - speed) < 0.05f,
+                        onClick = {
+                            viewModel.setPlaybackSpeed(speed)
+                            showSpeedDialog = false
+                        }
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "${speed}X",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = if (playbackSpeed == speed) FontWeight.Bold else FontWeight.Normal
                     )
                 }
-            },
+            }
+        }
+
+        // LIQUID GLASS BOTTOM SHEET: Playlist Items
+        LiquidGlassBottomSheet(
+            visible = showPlaylistSheet,
+            onDismissRequest = { showPlaylistSheet = false },
+            title = "قائمة المقاطع (${playlistItems.size}) 🎬"
+        ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(playlistItems) { item ->
+                    val isCurrent = item.id == currentMedia?.id
+                    LiquidGlassContainer(
+                        shape = RoundedCornerShape(14.dp),
+                        isHighlighted = isCurrent,
+                        contentPadding = PaddingValues(12.dp),
+                        onClick = {
+                            viewModel.loadMediaItem(item)
+                            showPlaylistSheet = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (isCurrent) Icons.Default.PlayArrow else Icons.Default.VideoLibrary,
+                                contentDescription = null,
+                                tint = if (isCurrent) Color(0xFF00E5FF) else Color.White
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = item.name,
+                                    color = Color.White,
+                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = formatDuration(item.durationMs),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // LIQUID GLASS DIALOG: Add Bookmark (حفظ علامة مرجعية)
+        val bookmarkTime = currentPosition
+        LiquidGlassDialog(
+            visible = showAddBookmarkDialog,
+            onDismissRequest = { showAddBookmarkDialog = false },
+            title = "حفظ علامة مرجعية 🔖",
             confirmButton = {
                 Button(
                     onClick = {
@@ -1987,125 +1964,122 @@ fun PlayerScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showAddBookmarkDialog = false }) {
-                    Text(stringResource(R.string.action_close))
+                    Text(stringResource(R.string.action_close), color = Color.White)
                 }
             }
-        )
-    }
-
-    // BOTTOM SHEET: Bookmarks List (قائمة العلامات المرجعية)
-    if (showBookmarksSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showBookmarksSheet = false }
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            Text(
+                text = "التوقيت المحدد: ${formatDuration(bookmarkTime)}",
+                color = Color(0xFF00E5FF),
+                fontWeight = FontWeight.SemiBold
+            )
+            OutlinedTextField(
+                value = bookmarkNoteInput,
+                onValueChange = { bookmarkNoteInput = it },
+                label = { Text("عنوان أو ملاحظة المشهد", color = Color.White.copy(alpha = 0.8f)) },
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFF00E5FF),
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.35f)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        // LIQUID GLASS BOTTOM SHEET: Bookmarks List (قائمة العلامات المرجعية)
+        LiquidGlassBottomSheet(
+            visible = showBookmarksSheet,
+            onDismissRequest = { showBookmarksSheet = false },
+            title = "العلامات المرجعية (${markers.size}) 🔖",
+            headerAction = {
+                FilledTonalButton(
+                    onClick = {
+                        showBookmarksSheet = false
+                        bookmarkNoteInput = "مشهد عند ${formatDuration(currentPosition)}"
+                        showAddBookmarkDialog = true
+                    },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                 ) {
-                    Text(
-                        text = "العلامات المرجعية (${markers.size})",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    FilledTonalButton(
-                        onClick = {
-                            showBookmarksSheet = false
-                            bookmarkNoteInput = "مشهد عند ${formatDuration(currentPosition)}"
-                            showAddBookmarkDialog = true
-                        }
-                    ) {
-                        Icon(Icons.Default.BookmarkAdd, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("إضافة")
+                    Icon(Icons.Default.BookmarkAdd, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("إضافة", fontSize = 12.sp)
+                }
+            }
+        ) {
+            if (markers.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 28.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.BookmarkBorder,
+                            contentDescription = null,
+                            modifier = Modifier.size(44.dp),
+                            tint = Color.White.copy(alpha = 0.6f)
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "لا توجد علامات مرجعية محفوظة لهذا المقطع",
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
                     }
                 }
-
-                if (markers.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Default.BookmarkBorder,
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = "لا توجد علامات مرجعية محفوظة لهذا المقطع",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(markers, key = { it.id }) { marker ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        viewModel.seekTo(marker.timeMs)
-                                        showBookmarksSheet = false
-                                    },
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(markers, key = { it.id }) { marker ->
+                        LiquidGlassContainer(
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            onClick = {
+                                viewModel.seekTo(marker.timeMs)
+                                showBookmarksSheet = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Bookmark,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFFD54F)
                                 )
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Bookmark,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary
+                                Spacer(Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = marker.name ?: "علامة مرجعية",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = marker.name ?: "علامة مرجعية",
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = formatDuration(marker.timeMs),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    IconButton(onClick = { viewModel.removeMarker(marker.id) }) {
-                                        Icon(
-                                            imageVector = Icons.Default.DeleteOutline,
-                                            contentDescription = "حذف العلامة",
-                                            tint = MaterialTheme.colorScheme.error
-                                        )
-                                    }
+                                    Text(
+                                        text = formatDuration(marker.timeMs),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = Color(0xFF00E5FF)
+                                    )
+                                }
+                                IconButton(onClick = { viewModel.removeMarker(marker.id) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteOutline,
+                                        contentDescription = "حذف العلامة",
+                                        tint = Color(0xFFFF5252)
+                                    )
                                 }
                             }
                         }
                     }
                 }
-                Spacer(Modifier.height(16.dp))
             }
         }
-    }
 
-    // DIALOG: Live Video Filters & Color Enhancement (Track 2)
-    if (showVideoFiltersDialog) {
+        // LIQUID GLASS DIALOG: Live Video Filters & Color Enhancement (Track 2)
         val filterPresets = listOf(
             "Normal" to "طبيعي",
             "Cinema HDR" to "سينما HDR 🎬",
@@ -2116,79 +2090,10 @@ fun PlayerScreen(
             "Sharp" to "تباين حاد ⚡",
             "B&W" to "أبيض وأسود 🎞️"
         )
-        AlertDialog(
+        LiquidGlassDialog(
+            visible = showVideoFiltersDialog,
             onDismissRequest = { showVideoFiltersDialog = false },
-            title = {
-                Text("فلاتر وتحسين الصورة المباشرة 🎨", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-            },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text("الأنماط البصرية الجاهزة:", fontWeight = FontWeight.SemiBold)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        filterPresets.forEach { (key, labelAr) ->
-                            FilterChip(
-                                selected = videoFilterPreset == key,
-                                onClick = { viewModel.setVideoFilterPreset(key) },
-                                label = { Text(labelAr) }
-                            )
-                        }
-                    }
-
-                    HorizontalDivider()
-
-                    // Brightness
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("إضاءة الفيديو (Brightness):", fontWeight = FontWeight.SemiBold)
-                        Text("${(filterBrightness * 100).toInt()}%", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    }
-                    Slider(
-                        value = filterBrightness,
-                        onValueChange = { viewModel.setFilterBrightness(it) },
-                        valueRange = -0.5f..0.5f
-                    )
-
-                    // Contrast
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("التباين (Contrast):", fontWeight = FontWeight.SemiBold)
-                        Text("${(filterContrast * 100).toInt()}%", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    }
-                    Slider(
-                        value = filterContrast,
-                        onValueChange = { viewModel.setFilterContrast(it) },
-                        valueRange = 0.5f..2.0f
-                    )
-
-                    // Saturation
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("تشبع الألوان (Saturation):", fontWeight = FontWeight.SemiBold)
-                        Text("${(filterSaturation * 100).toInt()}%", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    }
-                    Slider(
-                        value = filterSaturation,
-                        onValueChange = { viewModel.setFilterSaturation(it) },
-                        valueRange = 0f..2.0f
-                    )
-                }
-            },
+            title = "فلاتر وتحسين الصورة المباشرة 🎨",
             confirmButton = {
                 Button(onClick = { showVideoFiltersDialog = false }) {
                     Text("تطبيق")
@@ -2196,253 +2101,256 @@ fun PlayerScreen(
             },
             dismissButton = {
                 TextButton(onClick = { viewModel.resetVideoFilters() }) {
-                    Text("إعادة ضبط")
+                    Text("إعادة ضبط", color = Color.White.copy(alpha = 0.8f))
                 }
             }
-        )
-    }
-
-    // BOTTOM SHEET: Smart Safe-Watch & Family Guard Rules (Track 3)
-    if (showSafeWatchSheet) {
-        val safeRules = markers.filter { it.type.startsWith("SAFE_") }
-        ModalBottomSheet(
-            onDismissRequest = { showSafeWatchSheet = false }
         ) {
-            Column(
+            Text("الأنماط البصرية الجاهزة:", color = Color.White, fontWeight = FontWeight.SemiBold)
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.Shield,
-                            contentDescription = null,
-                            tint = if (isSafeModeEnabled) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "الحارس العائلي والمشاهدة الآمنة 🛡️",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "تخطي أو كتم أو تعتيم المشاهد غير الملائمة تلقائياً",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    Switch(
-                        checked = isSafeModeEnabled,
-                        onCheckedChange = { viewModel.toggleSafeMode() }
+                filterPresets.forEach { (key, labelAr) ->
+                    LiquidGlassPill(
+                        icon = Icons.Default.Palette,
+                        label = labelAr,
+                        isActive = videoFilterPreset == key,
+                        onClick = { viewModel.setVideoFilterPreset(key) }
                     )
                 }
-
-                // Quick Add Rule at Current Position
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "إضافة قاعدة حماية فورية من الثانية الحالية (${formatDuration(currentPosition)} لمدة 5 ثوانٍ):",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FilledTonalButton(
-                                onClick = {
-                                    viewModel.addSafeWatchRule(
-                                        startMs = currentPosition,
-                                        endMs = currentPosition + 5000L,
-                                        ruleType = "SAFE_SKIP",
-                                        title = "تخطي مشهد عند ${formatDuration(currentPosition)}"
-                                    )
-                                    Toast.makeText(context, "تمت إضافة قاعدة تخطي تلقائي ⏩", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
-                            ) {
-                                Text("⏩ تخطي", fontSize = 12.sp)
-                            }
-                            FilledTonalButton(
-                                onClick = {
-                                    viewModel.addSafeWatchRule(
-                                        startMs = currentPosition,
-                                        endMs = currentPosition + 5000L,
-                                        ruleType = "SAFE_MUTE",
-                                        title = "كتم صوت عند ${formatDuration(currentPosition)}"
-                                    )
-                                    Toast.makeText(context, "تمت إضافة قاعدة كتم صوت تلقائي 🔇", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
-                            ) {
-                                Text("🔇 كتم صوت", fontSize = 12.sp)
-                            }
-                            FilledTonalButton(
-                                onClick = {
-                                    viewModel.addSafeWatchRule(
-                                        startMs = currentPosition,
-                                        endMs = currentPosition + 5000L,
-                                        ruleType = "SAFE_BLUR",
-                                        title = "تعتيم شاشة عند ${formatDuration(currentPosition)}"
-                                    )
-                                    Toast.makeText(context, "تمت إضافة قاعدة تعتيم بصري 🛡️", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
-                            ) {
-                                Text("🛡️ تعتيم", fontSize = 12.sp)
-                            }
-                        }
-                    }
-                }
-
-                // AI Auto-Generate & Export/Import .safeplay Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            viewModel.generateDemoAiSafeWatchRules()
-                            Toast.makeText(context, "🤖 تم توليد 3 قواعد حماية ذكية (تخطي + كتم + تعتيم) على الشريط الزمني!", Toast.LENGTH_LONG).show()
-                        },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("توليد حماية ذكية 🤖", fontSize = 12.sp)
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            val json = viewModel.exportSafeWatchRulesJson()
-                            try {
-                                val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_SUBJECT, "ملف الحماية العائلية SafePlayer (.safeplay)")
-                                    putExtra(Intent.EXTRA_TEXT, json)
-                                }
-                                context.startActivity(Intent.createChooser(sendIntent, "مشاركة ملف الحماية (.safeplay)"))
-                            } catch (_: Exception) {
-                                Toast.makeText(context, "تعذر مشاركة ملف الحماية", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    ) {
-                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("تصدير", fontSize = 12.sp)
-                    }
-
-                    OutlinedButton(
-                        onClick = { showImportSafeWatchDialog = true }
-                    ) {
-                        Text("استيراد", fontSize = 12.sp)
-                    }
-                }
-
-                Text(
-                    text = "قواعد الحماية النشطة لهذا الفيديو (${safeRules.size}):",
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-
-                if (safeRules.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 20.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "لا توجد قواعد حماية مضافة بعد. اضغط على 'توليد حماية ذكية 🤖' أو أضف قاعدة يدوياً.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 220.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(safeRules, key = { it.id }) { rule ->
-                            val endMs = rule.description?.toLongOrNull() ?: (rule.timeMs + 5000L)
-                            val badgeText = when (rule.type) {
-                                "SAFE_SKIP" -> "⏩ تخطي تلقائي"
-                                "SAFE_MUTE" -> "🔇 كتم الصوت"
-                                "SAFE_BLUR" -> "🛡️ تعتيم الشاشة"
-                                else -> "حماية"
-                            }
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(rule.name ?: badgeText, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                        Text(
-                                            text = "$badgeText • من ${formatDuration(rule.timeMs)} إلى ${formatDuration(endMs)}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    IconButton(onClick = { viewModel.removeMarker(rule.id) }) {
-                                        Icon(Icons.Default.DeleteOutline, contentDescription = "حذف القاعدة", tint = MaterialTheme.colorScheme.error)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(16.dp))
             }
-        }
-    }
 
-    // DIALOG: Import .safeplay Family Guard JSON
-    if (showImportSafeWatchDialog) {
-        AlertDialog(
-            onDismissRequest = { showImportSafeWatchDialog = false },
-            title = { Text("استيراد ملف الحماية العائلية (.safeplay)", fontWeight = FontWeight.Bold) },
-            text = {
+            HorizontalDivider(color = Color.White.copy(alpha = 0.12f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("إضاءة الفيديو (Brightness):", color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text("${(filterBrightness * 100).toInt()}%", color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = filterBrightness,
+                onValueChange = { viewModel.setFilterBrightness(it) },
+                valueRange = -0.5f..0.5f
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("التباين (Contrast):", color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text("${(filterContrast * 100).toInt()}%", color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = filterContrast,
+                onValueChange = { viewModel.setFilterContrast(it) },
+                valueRange = 0.5f..2.0f
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("تشبع الألوان (Saturation):", color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text("${(filterSaturation * 100).toInt()}%", color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = filterSaturation,
+                onValueChange = { viewModel.setFilterSaturation(it) },
+                valueRange = 0f..2.0f
+            )
+        }
+
+        // LIQUID GLASS BOTTOM SHEET: Smart Safe-Watch & Family Guard Rules (Track 3)
+        val safeRules = markers.filter { it.type.startsWith("SAFE_") }
+        LiquidGlassBottomSheet(
+            visible = showSafeWatchSheet,
+            onDismissRequest = { showSafeWatchSheet = false },
+            title = "الحارس العائلي والمشاهدة الآمنة 🛡️",
+            subtitle = "تخطي أو كتم أو تعتيم المشاهد غير الملائمة تلقائياً",
+            headerAction = {
+                Switch(
+                    checked = isSafeModeEnabled,
+                    onCheckedChange = { viewModel.toggleSafeMode() }
+                )
+            }
+        ) {
+            LiquidGlassContainer(
+                shape = RoundedCornerShape(16.dp),
+                contentPadding = PaddingValues(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "الصق محتوى ملف الحماية (.safeplay JSON) لتطبيق قواعد التخطي والكتم تلقائياً على هذا الفيديو:",
-                        style = MaterialTheme.typography.bodySmall
+                        text = "إضافة قاعدة حماية فورية من الثانية الحالية (${formatDuration(currentPosition)} لمدة 5 ثوانٍ):",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
                     )
-                    OutlinedTextField(
-                        value = importSafeWatchJsonInput,
-                        onValueChange = { importSafeWatchJsonInput = it },
-                        label = { Text("محتوى ملف .safeplay") },
-                        minLines = 4,
-                        maxLines = 8,
-                        modifier = Modifier.fillMaxWidth()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilledTonalButton(
+                            onClick = {
+                                viewModel.addSafeWatchRule(
+                                    startMs = currentPosition,
+                                    endMs = currentPosition + 5000L,
+                                    ruleType = "SAFE_SKIP",
+                                    title = "تخطي مشهد عند ${formatDuration(currentPosition)}"
+                                )
+                                Toast.makeText(context, "تمت إضافة قاعدة تخطي تلقائي ⏩", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                        ) {
+                            Text("⏩ تخطي", fontSize = 12.sp)
+                        }
+                        FilledTonalButton(
+                            onClick = {
+                                viewModel.addSafeWatchRule(
+                                    startMs = currentPosition,
+                                    endMs = currentPosition + 5000L,
+                                    ruleType = "SAFE_MUTE",
+                                    title = "كتم صوت عند ${formatDuration(currentPosition)}"
+                                )
+                                Toast.makeText(context, "تمت إضافة قاعدة كتم صوت تلقائي 🔇", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                        ) {
+                            Text("🔇 كتم صوت", fontSize = 12.sp)
+                        }
+                        FilledTonalButton(
+                            onClick = {
+                                viewModel.addSafeWatchRule(
+                                    startMs = currentPosition,
+                                    endMs = currentPosition + 5000L,
+                                    ruleType = "SAFE_BLUR",
+                                    title = "تعتيم شاشة عند ${formatDuration(currentPosition)}"
+                                )
+                                Toast.makeText(context, "تمت إضافة قاعدة تعتيم بصري 🛡️", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                        ) {
+                            Text("🛡️ تعتيم", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        viewModel.generateDemoAiSafeWatchRules()
+                        Toast.makeText(context, "🤖 تم توليد 3 قواعد حماية ذكية (تخطي + كتم + تعتيم) على الشريط الزمني!", Toast.LENGTH_LONG).show()
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("توليد حماية ذكية 🤖", fontSize = 12.sp)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        val json = viewModel.exportSafeWatchRulesJson()
+                        try {
+                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, "ملف الحماية العائلية SafePlayer (.safeplay)")
+                                putExtra(Intent.EXTRA_TEXT, json)
+                            }
+                            context.startActivity(Intent.createChooser(sendIntent, "مشاركة ملف الحماية (.safeplay)"))
+                        } catch (_: Exception) {
+                            Toast.makeText(context, "تعذر مشاركة ملف الحماية", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("تصدير", color = Color.White, fontSize = 12.sp)
+                }
+
+                OutlinedButton(
+                    onClick = { showImportSafeWatchDialog = true }
+                ) {
+                    Text("استيراد", color = Color.White, fontSize = 12.sp)
+                }
+            }
+
+            Text(
+                text = "قواعد الحماية النشطة لهذا الفيديو (${safeRules.size}):",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            if (safeRules.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "لا توجد قواعد حماية مضافة بعد. اضغط على 'توليد حماية ذكية 🤖' أو أضف قاعدة يدوياً.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.72f),
+                        textAlign = TextAlign.Center
                     )
                 }
-            },
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 180.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(safeRules, key = { it.id }) { rule ->
+                        val endMs = rule.description?.toLongOrNull() ?: (rule.timeMs + 5000L)
+                        val badgeText = when (rule.type) {
+                            "SAFE_SKIP" -> "⏩ تخطي تلقائي"
+                            "SAFE_MUTE" -> "🔇 كتم الصوت"
+                            "SAFE_BLUR" -> "🛡️ تعتيم الشاشة"
+                            else -> "حماية"
+                        }
+                        LiquidGlassContainer(
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(rule.name ?: badgeText, color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        text = "$badgeText • من ${formatDuration(rule.timeMs)} إلى ${formatDuration(endMs)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFF00E5FF)
+                                    )
+                                }
+                                IconButton(onClick = { viewModel.removeMarker(rule.id) }) {
+                                    Icon(Icons.Default.DeleteOutline, contentDescription = "حذف القاعدة", tint = Color(0xFFFF5252))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // LIQUID GLASS DIALOG: Import .safeplay Family Guard JSON
+        LiquidGlassDialog(
+            visible = showImportSafeWatchDialog,
+            onDismissRequest = { showImportSafeWatchDialog = false },
+            title = "استيراد ملف الحماية العائلية (.safeplay)",
             confirmButton = {
                 Button(
                     onClick = {
@@ -2462,14 +2370,35 @@ fun PlayerScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showImportSafeWatchDialog = false }) {
-                    Text("إلغاء")
+                    Text("إلغاء", color = Color.White)
                 }
             }
-        )
+        ) {
+            Text(
+                text = "الصق محتوى ملف الحماية (.safeplay JSON) لتطبيق قواعد التخطي والكتم تلقائياً على هذا الفيديو:",
+                color = Color.White.copy(alpha = 0.85f),
+                style = MaterialTheme.typography.bodySmall
+            )
+            OutlinedTextField(
+                value = importSafeWatchJsonInput,
+                onValueChange = { importSafeWatchJsonInput = it },
+                label = { Text("محتوى ملف .safeplay", color = Color.White.copy(alpha = 0.75f)) },
+                minLines = 4,
+                maxLines = 8,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFF00E5FF),
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.35f)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        }
     }
 }
 
-// Quick action pill button matching Screenshot_٢٠٢٦٠٩١١-٢١٠٨٢٢.png
+// Reusable Liquid Glass quick action pill button
 @Composable
 private fun PlayerPillAction(
     icon: ImageVector,
@@ -2477,42 +2406,12 @@ private fun PlayerPillAction(
     isActive: Boolean,
     onClick: () -> Unit
 ) {
-    val bgAnimColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (isActive) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.65f),
-        animationSpec = tween(200),
-        label = "pill_bg"
+    LiquidGlassPill(
+        icon = icon,
+        label = label,
+        isActive = isActive,
+        onClick = onClick
     )
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
-        color = bgAnimColor,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (isActive) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.18f)
-        ),
-        tonalElevation = if (isActive) 4.dp else 0.dp
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = if (isActive) MaterialTheme.colorScheme.onPrimary else Color.White,
-                modifier = Modifier.size(15.dp)
-            )
-            Spacer(Modifier.width(5.dp))
-            Text(
-                text = label,
-                color = if (isActive) MaterialTheme.colorScheme.onPrimary else Color.White,
-                fontSize = 11.sp,
-                textAlign = TextAlign.Center,
-                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
-            )
-        }
-    }
 }
 
 @Composable
@@ -2521,13 +2420,11 @@ private fun GestureOverlayIndicator(
     label: String,
     progress: Float
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.85f)),
-        shape = RoundedCornerShape(24.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+    LiquidGlassContainer(
+        shape = RoundedCornerShape(26.dp),
+        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 18.dp)
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -2535,14 +2432,14 @@ private fun GestureOverlayIndicator(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                    .background(Color(0xFF00E5FF).copy(alpha = 0.2f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                Icon(icon, contentDescription = label, tint = Color(0xFF00E5FF), modifier = Modifier.size(28.dp))
             }
             Text(
                 text = label,
-                color = Color.White.copy(alpha = 0.9f),
+                color = Color.White.copy(alpha = 0.92f),
                 fontWeight = FontWeight.Medium,
                 fontSize = 13.sp
             )
@@ -2552,7 +2449,7 @@ private fun GestureOverlayIndicator(
                     .width(140.dp)
                     .height(6.dp)
                     .clip(RoundedCornerShape(3.dp)),
-                color = MaterialTheme.colorScheme.primary,
+                color = Color(0xFF00E5FF),
                 trackColor = Color.White.copy(alpha = 0.25f)
             )
             Text(

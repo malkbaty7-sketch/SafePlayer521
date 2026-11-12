@@ -56,6 +56,9 @@ class PlayerViewModel(
     var player: Player? = null
         private set
 
+    // Liquid Glass UI Overlay Controller (Real-time blurRadius, glassOpacity/surfaceAlpha, tintColor)
+    val liquidGlassController = com.example.ui.glass.LiquidGlassController()
+
     private val _isPlayerReady = MutableStateFlow(false)
     val isPlayerReady: StateFlow<Boolean> = _isPlayerReady.asStateFlow()
 
